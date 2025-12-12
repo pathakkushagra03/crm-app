@@ -84,22 +84,15 @@ const AuthManager = {
                     return;
                 }
             } else {
-              // Demo mode - accept any credentials
-user = {
-    id: 'demo-user',
-    name: 'Demo User',
-    email: "admin@demo.com",
-    password: "demo123",
-    role: "Admin",
-    companies: []
-};
-
-// VERY IMPORTANT — Attach user to app state
-AppState.currentUser = user;
-
-// Save to localStorage so other pages know you're logged in
-localStorage.setItem("crm_user", JSON.stringify(user));
-
+                // Demo mode - accept any credentials
+                user = {
+                    id: 'demo-user',
+                    name: 'Demo User',
+                    email: admin@demo.com,
+                    password: 'demo123',
+                    role: 'Admin',
+                    companies: []
+                };
             }
 
             // Store authentication
