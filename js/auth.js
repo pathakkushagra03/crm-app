@@ -84,15 +84,16 @@ const AuthManager = {
                     return;
                 }
             } else {
-                // Demo mode - accept any credentials
-                user = {
-                    id: 'demo-user',
-                    name: 'Demo User',
-                    email: admin@demo.com,
-                    password: 'demo123',
-                    role: 'Admin',
-                    companies: []
-                };
+              // Demo mode - accept any credentials
+    user = {
+    id: 'demo-user',
+    name: 'Demo User',
+    email: "admin@demo.com",
+    password: 'demo123',
+    role: 'Admin',
+    companies: []
+};
+
             }
 
             // Store authentication
