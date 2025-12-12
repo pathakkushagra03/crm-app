@@ -162,31 +162,41 @@ const CRUDManager = {
         const data = this.getFormData(form);
 
         try {
+            let newCompany = null;
+            
             if (AirtableAPI.isConfigured()) {
-                const newCompany = await AirtableAPI.addCompany(data);
+                newCompany = await AirtableAPI.addCompany(data);
                 this.showToast('Company created successfully!', 'success');
-                AppState.data.companies.push(newCompany);
             } else {
+                // Demo mode
                 const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7B731'];
-                data.color = colors[Math.floor(Math.random() * colors.length)];
-                AppState.data.companies.push({
-                    id: Date.now().toString(),
-                    ...data
-                });
-                this.showToast('Company created (demo mode)', 'success');
+                newCompany = {
+                    id: 'demo-' + Date.now().toString(),
+                    name: data.name,
+                    color: colors[Math.floor(Math.random() * colors.length)]
+                };
+                this.showToast('Company created (Demo Mode)', 'success');
             }
-
-            render();
+            
+            // Add to state
+            AppState.data.companies.push(newCompany);
+            
+            // Close modal and refresh
             document.querySelector('.modal-overlay').remove();
+            render();
+            
         } catch (error) {
             console.error('Error creating company:', error);
-            this.showToast('Failed to create company. Please try again.', 'error');
+            this.showToast('Failed to create company: ' + error.message, 'error');
         }
     },
 
     showEditCompanyForm(companyId) {
         const company = AppState.data.companies.find(c => c.id === companyId);
-        if (!company) return;
+        if (!company) {
+            this.showToast('Company not found', 'error');
+            return;
+        }
 
         const content = `
             <form id="editCompanyForm">
@@ -219,16 +229,22 @@ const CRUDManager = {
                 await AirtableAPI.updateCompany(companyId, data);
                 this.showToast('Company updated successfully!', 'success');
             } else {
+                // Demo mode
                 const company = AppState.data.companies.find(c => c.id === companyId);
-                company.name = data.name;
+                if (company) {
+                    company.name = data.name;
+                }
+                this.showToast('Company updated (Demo Mode)', 'success');
             }
 
+            // Refresh data
             await loadCompanies();
             render();
             document.querySelector('.modal-overlay').remove();
+            
         } catch (error) {
             console.error('Error updating company:', error);
-            this.showToast('Failed to update company. Please try again.', 'error');
+            this.showToast('Failed to update company: ' + error.message, 'error');
         }
     },
 
@@ -242,25 +258,29 @@ const CRUDManager = {
                         await AirtableAPI.deleteCompany(companyId);
                         this.showToast('Company deleted successfully!', 'success');
                     } else {
+                        // Demo mode - remove from state
                         AppState.data.companies = AppState.data.companies.filter(c => c.id !== companyId);
-                        AppState.data.users = AppState.data.users.filter(u => u.companies && !u.companies.includes(companyId));
+                        AppState.data.users = AppState.data.users.filter(u => !u.companies || !u.companies.includes(companyId));
                         AppState.data.clients = AppState.data.clients.filter(c => c.company !== companyId);
                         AppState.data.leads = AppState.data.leads.filter(l => l.company !== companyId);
                         AppState.data.generalTodos = AppState.data.generalTodos.filter(t => t.company !== companyId);
                         AppState.data.clientTodos = AppState.data.clientTodos.filter(t => t.company !== companyId);
+                        this.showToast('Company deleted (Demo Mode)', 'success');
                     }
 
                     await loadCompanies();
                     render();
                     document.querySelector('.modal-overlay')?.remove();
+                    
                 } catch (error) {
                     console.error('Error deleting company:', error);
-                    this.showToast('Failed to delete company. Please try again.', 'error');
+                    this.showToast('Failed to delete company: ' + error.message, 'error');
                 }
             }
         );
-    },
-
+    }
+};
+console.log('✅ CRUD Manager loaded (Part 1 - Company operations fixed)');
     // ========================================
     // USER/MEMBER CRUD OPERATIONS
     // ========================================
