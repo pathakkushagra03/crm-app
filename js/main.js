@@ -121,9 +121,7 @@ function goForward() {
 // ========================================
 async function loadCompanies() {
     AppState.loading = true;
-    if (AppState.currentView !== 'login') {
-        render();
-    }
+    render();
     
     try {
         if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
@@ -139,9 +137,7 @@ async function loadCompanies() {
         generateDemoData();
     } finally {
         AppState.loading = false;
-        if (AppState.currentView !== 'login') {
-            render();
-        }
+        render();
     }
 }
 
@@ -151,17 +147,19 @@ async function loadCompanyData(companyId) {
     
     try {
         if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
-            const [users, clients, leads, generalTodos] = await Promise.all([
+            const [users, clients, leads, generalTodos, clientTodos] = await Promise.all([
                 AirtableAPI.getUsers(companyId),
                 AirtableAPI.getClients(companyId),
                 AirtableAPI.getLeads(companyId),
-                AirtableAPI.getGeneralTodos(companyId)
+                AirtableAPI.getGeneralTodos(companyId),
+                AirtableAPI.getClientTodos(companyId)
             ]);
             
             AppState.data.users = users.records;
             AppState.data.clients = clients.records;
             AppState.data.leads = leads.records;
             AppState.data.generalTodos = generalTodos.records;
+            AppState.data.clientTodos = clientTodos.records;
         } else {
             console.warn('Airtable not configured, using demo data');
         }
@@ -209,8 +207,8 @@ function generateDemoData() {
     ];
 
     AppState.data.users = [
-        { id: '1', name: 'John Doe', email: 'john@acme.com', phone: '555-0101', role: 'Admin', companies: ['1'] },
-        { id: '2', name: 'Jane Smith', email: 'jane@acme.com', phone: '555-0102', role: 'User', companies: ['1'] }
+        { id: '1', name: 'John Doe', email: 'john@acme.com', phone: '555-0101', role: 'Admin', companies: ['1'], password: 'admin' },
+        { id: '2', name: 'Jane Smith', email: 'jane@acme.com', phone: '555-0102', role: 'User', companies: ['1'], password: 'user' }
     ];
 
     AppState.data.clients = [
@@ -249,6 +247,10 @@ function generateDemoData() {
         { id: '1', name: 'Task 1', status: 'Pending', priority: 'High', dueDate: '2024-12-25', assignedUser: '1', company: '1' },
         { id: '2', name: 'Task 2', status: 'In Progress', priority: 'Medium', dueDate: '2024-12-26', assignedUser: '2', company: '1' }
     ];
+    
+    AppState.data.clientTodos = [
+        { id: '1', name: 'Follow up with Client Alpha', status: 'Pending', priority: 'High', dueDate: '2024-12-20', assignedUser: '1', company: '1', client: '1' }
+    ];
 }
 
 // ========================================
@@ -269,9 +271,12 @@ const Views = {
         return `
             <div class="min-h-screen flex items-center justify-center p-6">
                 <div class="glass-card p-12 max-w-4xl w-full fade-in">
-                    <h1 class="text-4xl font-bold text-white mb-8 text-center fade-in">
-                        Select Your Company
-                    </h1>
+                    <div class="flex items-center justify-between mb-8">
+                        <h1 class="text-4xl font-bold text-white fade-in">
+                            Select Your Company
+                        </h1>
+                        ${AuthManager.getUserDisplay()}
+                    </div>
                     
                     <div class="text-center mb-8">
                         <button class="btn btn-primary" onclick="if(typeof CRUDManager !== 'undefined') CRUDManager.showAddCompanyForm()">
@@ -341,11 +346,16 @@ const Views = {
                 </div>
 
                 <div class="glass-card p-6 fade-in">
-                    <h3 class="text-white text-2xl font-bold mb-6">Team Members</h3>
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-white text-2xl font-bold">Team Members</h3>
+                        <button class="btn btn-primary" onclick="if(typeof CRUDManager !== 'undefined') CRUDManager.showAddUserForm()">
+                            ➕ Add Member
+                        </button>
+                    </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         ${users.map(user => `
                             <div class="glass-card p-4 cursor-pointer hover:scale-105 transition-transform"
-                                 onclick="selectUser('${user.id}')">
+                                 onclick="if(typeof CRUDManager !== 'undefined') CRUDManager.showEditUserForm('${user.id}')">
                                 <div class="text-3xl mb-2">👤</div>
                                 <div class="text-white font-bold">${user.name}</div>
                                 <div class="text-white text-sm opacity-75">${user.email}</div>
@@ -595,7 +605,7 @@ function renderTopbar(company, pageTitle) {
             <div class="text-white text-lg font-semibold">
                 ${company.name} • ${pageTitle}
             </div>
-            <div class="text-white text-sm">${AppState.role}</div>
+            ${AuthManager.getUserDisplay()}
         </div>
     `;
 }
@@ -646,8 +656,36 @@ function render() {
 // ========================================
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 CRM initializing...');
-    await loadCompanies();
-    navigateTo('companySelection');
+    
+    // Check if user is already authenticated
+    if (typeof AuthManager !== 'undefined') {
+        const hasSession = AuthManager.checkStoredSession();
+        
+        if (hasSession) {
+            console.log('✅ User session found:', AuthManager.currentUser.name);
+            await loadCompanies();
+            navigateTo('companySelection');
+        } else {
+            console.log('🔐 No session found, showing login');
+            AuthManager.showLoginForm();
+        }
+    } else {
+        console.warn('⚠️ AuthManager not loaded, showing login');
+        setTimeout(() => {
+            if (typeof AuthManager !== 'undefined') {
+                AuthManager.showLoginForm();
+            } else {
+                document.getElementById('app').innerHTML = `
+                    <div class="min-h-screen flex items-center justify-center">
+                        <div class="glass-card p-12 text-center">
+                            <div class="text-white text-2xl">⚠️ Authentication system not loaded</div>
+                            <button class="btn btn-primary mt-4" onclick="location.reload()">Reload</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }, 100);
+    }
 });
 
 console.log('✅ Main app logic loaded');
