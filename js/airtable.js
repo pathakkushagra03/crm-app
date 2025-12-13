@@ -1,36 +1,29 @@
 // ========================================
-// AIRTABLE CONFIG (SAFE MODE)
+// AIRTABLE – PRODUCTION READY
 // ========================================
 
-// 🔴 KEEP THIS FALSE UNTIL EVERYTHING WORKS
-const USE_AIRTABLE = false;
+// ✅ TURN THIS ON
+const USE_AIRTABLE = true;
 
-// 🟡 ONLY FILL THESE WHEN READY
+// 🔴 FILL THESE
 const AirtableConfig = {
-    API_KEY: '',      // paste your key later
-    BASE_ID: '',      // paste your base id later
+    API_KEY: 'PASTE_YOUR_AIRTABLE_API_KEY_HERE',
+    BASE_ID: 'PASTE_YOUR_BASE_ID_HERE'
 };
 
 // ========================================
-// AIRTABLE API WRAPPER
+// CORE API
 // ========================================
 
 const AirtableAPI = {
 
     isConfigured() {
         return USE_AIRTABLE &&
-               AirtableConfig.API_KEY &&
-               AirtableConfig.BASE_ID;
+            AirtableConfig.API_KEY &&
+            AirtableConfig.BASE_ID;
     },
 
-    // ===============================
-    // GENERIC REQUEST
-    // ===============================
     async request(table, method = 'GET', data = null, recordId = '') {
-        if (!this.isConfigured()) {
-            throw new Error('Airtable not configured');
-        }
-
         const url =
             `https://api.airtable.com/v0/${AirtableConfig.BASE_ID}/${table}` +
             (recordId ? `/${recordId}` : '');
@@ -38,7 +31,7 @@ const AirtableAPI = {
         const options = {
             method,
             headers: {
-                'Authorization': `Bearer ${AirtableConfig.API_KEY}`,
+                Authorization: `Bearer ${AirtableConfig.API_KEY}`,
                 'Content-Type': 'application/json'
             }
         };
@@ -48,85 +41,108 @@ const AirtableAPI = {
         }
 
         const res = await fetch(url, options);
-        if (!res.ok) throw new Error('Airtable request failed');
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text);
+        }
         return await res.json();
     },
 
-    // ===============================
+    normalize(record) {
+        return { id: record.id, ...record.fields };
+    },
+
+    normalizeList(res) {
+        return res.records.map(r => this.normalize(r));
+    },
+
+    // ========================================
     // COMPANIES
-    // ===============================
+    // ========================================
     async getCompanies() {
-        return this.request('Companies');
+        const res = await this.request('Companies');
+        return this.normalizeList(res);
     },
 
     async addCompany(data) {
-        return this.request('Companies', 'POST', data);
+        const res = await this.request('Companies', 'POST', data);
+        return this.normalize(res);
     },
 
     async updateCompany(id, data) {
-        return this.request('Companies', 'PATCH', data, id);
+        const res = await this.request('Companies', 'PATCH', data, id);
+        return this.normalize(res);
     },
 
     async deleteCompany(id) {
-        return this.request('Companies', 'DELETE', null, id);
+        await this.request('Companies', 'DELETE', null, id);
     },
 
-    // ===============================
+    // ========================================
     // CLIENTS
-    // ===============================
+    // ========================================
     async getClients() {
-        return this.request('Clients');
+        const res = await this.request('Clients');
+        return this.normalizeList(res);
     },
 
     async addClient(data) {
-        return this.request('Clients', 'POST', data);
+        const res = await this.request('Clients', 'POST', data);
+        return this.normalize(res);
     },
 
     async updateClient(id, data) {
-        return this.request('Clients', 'PATCH', data, id);
+        const res = await this.request('Clients', 'PATCH', data, id);
+        return this.normalize(res);
     },
 
     async deleteClient(id) {
-        return this.request('Clients', 'DELETE', null, id);
+        await this.request('Clients', 'DELETE', null, id);
     },
 
-    // ===============================
+    // ========================================
     // LEADS
-    // ===============================
+    // ========================================
     async getLeads() {
-        return this.request('Leads');
+        const res = await this.request('Leads');
+        return this.normalizeList(res);
     },
 
     async addLead(data) {
-        return this.request('Leads', 'POST', data);
+        const res = await this.request('Leads', 'POST', data);
+        return this.normalize(res);
     },
 
     async updateLead(id, data) {
-        return this.request('Leads', 'PATCH', data, id);
+        const res = await this.request('Leads', 'PATCH', data, id);
+        return this.normalize(res);
     },
 
     async deleteLead(id) {
-        return this.request('Leads', 'DELETE', null, id);
+        await this.request('Leads', 'DELETE', null, id);
     },
 
-    // ===============================
+    // ========================================
     // TASKS
-    // ===============================
+    // ========================================
     async getTasks() {
-        return this.request('Tasks');
+        const res = await this.request('Tasks');
+        return this.normalizeList(res);
     },
 
     async addTask(data) {
-        return this.request('Tasks', 'POST', data);
+        const res = await this.request('Tasks', 'POST', data);
+        return this.normalize(res);
     },
 
     async updateTask(id, data) {
-        return this.request('Tasks', 'PATCH', data, id);
+        const res = await this.request('Tasks', 'PATCH', data, id);
+        return this.normalize(res);
     },
 
     async deleteTask(id) {
-        return this.request('Tasks', 'DELETE', null, id);
+        await this.request('Tasks', 'DELETE', null, id);
     }
 };
 
-console.log('✅ Airtable API loaded (Demo mode)');
+console.log('✅ Airtable connected (LIVE MODE)');
