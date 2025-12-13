@@ -65,6 +65,71 @@ const CRUDManager = {
         });
     },
 
+const CRUDManager = {
+    
+    // ... your existing functions (showToast, showConfirmDialog, etc.) ...
+    
+    /**
+     * Render star rating selector
+     */
+    renderStarRating: function(currentRating = 0, inputName = 'rating') {
+        const stars = [1, 2, 3, 4, 5].map(star => {
+            const isActive = star <= currentRating ? 'active' : '';
+            return `<span class="star ${isActive}" 
+                          data-rating="${star}"
+                          onclick="CRUDManager.setRating('${inputName}', ${star})">⭐</span>`;
+        }).join('');
+        
+        return `
+            <input type="hidden" name="${inputName}" id="${inputName}" value="${currentRating}">
+            <div class="star-rating-wrapper">
+                <div class="star-rating" id="${inputName}-display">
+                    ${stars}
+                </div>
+                <div class="rating-label">
+                    ${currentRating > 0 ? `${currentRating}/5 stars` : 'Click to rate'}
+                </div>
+            </div>
+            <style>
+                .star-rating-wrapper { margin-top: 8px; }
+                .star-rating { display: flex; gap: 8px; font-size: 36px; margin-bottom: 8px; }
+                .star { filter: grayscale(100%) brightness(0.6); transition: all 0.2s ease; cursor: pointer; user-select: none; }
+                .star:hover { transform: scale(1.2); filter: grayscale(50%) brightness(0.8); }
+                .star.active { filter: grayscale(0%) brightness(1); text-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
+                .rating-label { color: white; font-size: 14px; opacity: 0.8; font-weight: 500; }
+            </style>
+        `;
+    },
+
+    /**
+     * Set rating value
+     */
+    setRating: function(inputName, rating) {
+        const input = document.getElementById(inputName);
+        const display = document.getElementById(`${inputName}-display`);
+        
+        if (input) input.value = rating;
+        
+        if (display) {
+            const stars = display.querySelectorAll('.star');
+            stars.forEach((star, index) => {
+                if (index < rating) {
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('active');
+                }
+            });
+            
+            const label = display.parentElement.querySelector('.rating-label');
+            if (label) {
+                label.textContent = rating > 0 ? `${rating}/5 stars` : 'Click to rate';
+            }
+        }
+    },
+    
+    // ... rest of your functions ...
+};
+
     /**
      * Create modal HTML
      */
