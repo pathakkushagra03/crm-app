@@ -1,45 +1,182 @@
 // ========================================
-// AUTHENTICATION SYSTEM - NO LOGIN REQUIRED
+// AUTHENTICATION SYSTEM
 // ========================================
 
 const AuthManager = {
     currentUser: null,
     
     /**
-     * Initialize default user (called automatically)
+     * Show login form
      */
-    init() {
-        this.currentUser = {
-            id: 'default-user',
-            name: 'CRM User',
-            email: 'user@crm.com',
-            role: 'Admin',
-            companies: []
-        };
-        AppState.currentUser = this.currentUser;
-        AppState.role = this.currentUser.role;
+    showLoginForm() {
+        const content = `
+            <div class="text-center mb-8">
+                <div class="text-6xl mb-4">🔐</div>
+                <h1 class="text-4xl font-bold text-white mb-2">Welcome to CRM</h1>
+                <p class="text-white text-lg opacity-75">Sign in to continue</p>
+            </div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label required">Email</label>
+                    <input type="email" name="email" class="form-input" placeholder="your@email.com" required autofocus>
+                    <div class="form-error">Valid email is required</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label required">Password</label>
+                    <input type="password" name="password" class="form-input" placeholder="Enter your password" required>
+                    <div class="form-error">Password is required</div>
+                </div>
+                
+                <div class="form-group mb-6">
+                    <label class="flex items-center text-white cursor-pointer">
+                        <input type="checkbox" name="remember" class="mr-2">
+                        <span class="text-sm">Remember me</span>
+                    </label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-full">
+                    Sign In
+                </button>
+                
+                <div class="text-center mt-6">
+                    <p class="text-white text-sm opacity-75">
+                        Demo Mode: Use any email/password or configure Airtable
+                    </p>
+                </div>
+            </form>
+        `;
+
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="min-h-screen flex items-center justify-center p-6">
+                <div class="glass-card p-12 max-w-md w-full fade-in">
+                    ${content}
+                </div>
+            </div>
+        `;
+
+        const form = document.getElementById('loginForm');
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleLogin();
+        });
+    },
+
+    /**
+     * Handle login
+     */
+    async handleLogin() {
+        const form = document.getElementById('loginForm');
+        if (!CRUDManager.validateForm(form)) return;
+
+        const data = CRUDManager.getFormData(form);
+
+        try {
+            let user = null;
+
+            if (AirtableAPI.isConfigured()) {
+                user = await AirtableAPI.authenticateUser(data.email, data.password);
+                
+                if (!user) {
+                    CRUDManager.showToast('Invalid email or password', 'error');
+                    return;
+                }
+            } else {
+                // Demo mode - accept any credentials
+               user = {
+                    id: 'demo-user',
+                    name: 'Demo User',
+                    email: 'admin@demo.com',
+                    role: 'Admin',
+                    companies: []
+                };
+            }
+
+            // Store authentication
+            this.currentUser = user;
+            AppState.currentUser = user;
+            AppState.role = user.role;
+
+            if (data.remember) {
+                localStorage.setItem('crm_user', JSON.stringify(user));
+            }
+
+            CRUDManager.showToast(`Welcome back, ${user.name}!`, 'success');
+            
+            // Load companies and proceed
+            await loadCompanies();
+            navigateTo('companySelection');
+
+        } catch (error) {
+            console.error('Login error:', error);
+            CRUDManager.showToast('Login failed. Please try again.', 'error');
+        }
+    },
+
+    /**
+     * Handle logout
+     */
+    logout() {
+        CRUDManager.showConfirmDialog(
+            'Sign Out',
+            'Are you sure you want to sign out?',
+            () => {
+                this.currentUser = null;
+                AppState.currentUser = null;
+                AppState.selectedCompany = null;
+                AppState.selectedUser = null;
+                localStorage.removeItem('crm_user');
+                
+                CRUDManager.showToast('Signed out successfully', 'success');
+                this.showLoginForm();
+            }
+        );
     },
 
     /**
      * Check if user is authenticated
      */
     isAuthenticated() {
-        return true; // Always authenticated
+        return this.currentUser !== null;
     },
 
     /**
-     * Check stored session (no-op now)
+     * Check stored session
      */
     checkStoredSession() {
-        this.init();
-        return true;
+        const stored = localStorage.getItem('crm_user');
+        if (stored) {
+            try {
+                this.currentUser = JSON.parse(stored);
+                AppState.currentUser = this.currentUser;
+                AppState.role = this.currentUser.role;
+                return true;
+            } catch (error) {
+                localStorage.removeItem('crm_user');
+                return false;
+            }
+        }
+        return false;
     },
 
     /**
      * Check if user has permission
      */
     hasPermission(action) {
-        return true; // All permissions granted
+        if (!this.currentUser) return false;
+        
+        const role = this.currentUser.role;
+        
+        const permissions = {
+            'Admin': ['create', 'read', 'update', 'delete', 'manage_users', 'manage_companies'],
+            'Manager': ['create', 'read', 'update', 'delete'],
+            'Sales': ['create', 'read', 'update'],
+            'User': ['read', 'update']
+        };
+
+        return permissions[role]?.includes(action) || false;
     },
 
     /**
@@ -62,6 +199,10 @@ const AuthManager = {
                         <button class="w-full text-left px-4 py-3 text-white hover:bg-white hover:bg-opacity-10 transition-all" 
                                 onclick="AuthManager.showProfile()">
                             👤 My Profile
+                        </button>
+                        <button class="w-full text-left px-4 py-3 text-white hover:bg-white hover:bg-opacity-10 transition-all" 
+                                onclick="AuthManager.logout()">
+                            🚪 Sign Out
                         </button>
                     </div>
                 </div>
@@ -92,6 +233,13 @@ const AuthManager = {
                     <div class="text-white text-sm opacity-75 mb-1">User ID</div>
                     <div class="text-white font-mono text-xs">${this.currentUser.id}</div>
                 </div>
+                
+                ${this.currentUser.phone ? `
+                    <div class="glass-card p-4">
+                        <div class="text-white text-sm opacity-75 mb-1">Phone</div>
+                        <div class="text-white font-semibold">${this.currentUser.phone}</div>
+                    </div>
+                ` : ''}
             </div>
         `;
 
@@ -101,13 +249,7 @@ const AuthManager = {
 
         const modal = CRUDManager.createModal('My Profile', content, footer);
         document.body.appendChild(modal);
-    },
-
-    // Removed functions:
-    showLoginForm() { this.init(); },
-    handleLogin() { this.init(); },
-    logout() { },
-    authenticateUser() { return this.currentUser; }
+    }
 };
 
 // Close user menu when clicking outside
@@ -118,9 +260,4 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Auto-initialize on load
-document.addEventListener('DOMContentLoaded', () => {
-    AuthManager.init();
-});
-
-console.log('✅ Authentication Manager loaded - No login required');
+console.log('✅ Authentication Manager loaded');

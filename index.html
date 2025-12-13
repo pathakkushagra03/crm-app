@@ -1,31 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <title>CRM Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- Tailwind -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Modern CRM Dashboard with Airtable Integration - Manage Companies, Users, Clients, Leads, and Tasks">
+    <title>CRM Dashboard - Modern SaaS</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-
+    
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <!-- Styles -->
-    <link rel="stylesheet" href="css/style.css" />
-    <link rel="stylesheet" href="css/modal.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/modal.css">
 </head>
 <body>
+    <!-- App Container -->
+    <div id="app" role="main" aria-label="CRM Application">
+        <!-- Application content will be rendered here by JavaScript -->
+    </div>
 
-<div id="app"></div>
 
-<!-- JS ORDER IS VERY IMPORTANT -->
-<script src="js/airtable.js"></script>
-<script src="js/crud.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/calendar.js"></script>
-<script src="js/main.js"></script>
-
+    <!-- JavaScript Files (Load in correct dependency order) -->
+    <script src="js/airtable.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/crud.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/calendar.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>
