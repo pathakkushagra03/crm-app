@@ -1,5 +1,5 @@
 // ========================================
-// CHART MANAGEMENT
+// CHART MANAGEMENT - 3D STYLE WITH CLEAR TEXT
 // ========================================
 
 let chartInstances = {
@@ -30,6 +30,59 @@ function destroyChart(chartKey) {
 }
 
 /**
+ * Common chart options for better text clarity
+ */
+const commonChartOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    layout: {
+        padding: {
+            top: 20,
+            bottom: 20,
+            left: 10,
+            right: 10
+        }
+    },
+    plugins: {
+        legend: {
+            position: 'bottom',
+            labels: {
+                color: 'white',
+                padding: 20,
+                font: {
+                    size: 14,
+                    weight: '600',
+                    family: "'Inter', sans-serif"
+                },
+                boxWidth: 20,
+                boxHeight: 20,
+                usePointStyle: true,
+                pointStyle: 'circle'
+            }
+        },
+        tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            titleColor: 'white',
+            bodyColor: 'white',
+            borderColor: 'rgba(255, 255, 255, 0.3)',
+            borderWidth: 2,
+            padding: 16,
+            displayColors: true,
+            titleFont: {
+                size: 16,
+                weight: 'bold',
+                family: "'Inter', sans-serif"
+            },
+            bodyFont: {
+                size: 14,
+                family: "'Inter', sans-serif"
+            },
+            cornerRadius: 8
+        }
+    }
+};
+
+/**
  * Clients Status Chart
  */
 function updateClientsChart() {
@@ -50,17 +103,26 @@ function updateClientsChart() {
     const labels = Object.keys(statusCounts);
     const data = Object.values(statusCounts);
     
-    // Color scheme for client statuses
+    // Color scheme for client statuses with higher saturation
     const colors = {
-        'Active': 'rgba(39, 174, 96, 0.8)',
-        'Inactive': 'rgba(149, 165, 166, 0.8)',
-        'On Hold': 'rgba(243, 156, 18, 0.8)',
-        'VIP': 'rgba(241, 196, 15, 0.8)',
-        'Churned': 'rgba(192, 57, 43, 0.8)',
-        'Pending': 'rgba(52, 152, 219, 0.8)'
+        'Active': 'rgba(39, 174, 96, 0.95)',
+        'Inactive': 'rgba(149, 165, 166, 0.95)',
+        'On Hold': 'rgba(243, 156, 18, 0.95)',
+        'VIP': 'rgba(241, 196, 15, 0.95)',
+        'Churned': 'rgba(231, 76, 60, 0.95)',
+        'Pending': 'rgba(52, 152, 219, 0.95)'
     };
     
-    const backgroundColors = labels.map(label => colors[label] || 'rgba(155, 89, 182, 0.8)');
+    const backgroundColors = labels.map(label => colors[label] || 'rgba(155, 89, 182, 0.95)');
+    const borderColors = labels.map(label => {
+        const color = colors[label] || 'rgba(155, 89, 182, 0.95)';
+        return color.replace('0.95', '1');
+    });
+    
+    // Add 3D shadow effect to canvas
+    canvas.style.filter = 'drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4))';
+    canvas.style.transform = 'perspective(1000px) rotateX(5deg)';
+    canvas.style.transformStyle = 'preserve-3d';
     
     chartInstances.clients = new Chart(canvas, {
         type: 'doughnut',
@@ -70,31 +132,46 @@ function updateClientsChart() {
                 label: 'Clients by Status',
                 data: data,
                 backgroundColor: backgroundColors,
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-                borderWidth: 2
+                borderColor: borderColors,
+                borderWidth: 3,
+                hoverOffset: 15,
+                offset: 5
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: true,
+            ...commonChartOptions,
+            cutout: '50%',
             plugins: {
+                ...commonChartOptions.plugins,
                 legend: {
-                    position: 'bottom',
+                    ...commonChartOptions.plugins.legend,
                     labels: {
-                        color: 'white',
-                        padding: 15,
-                        font: {
-                            size: 12,
-                            family: "'Inter', sans-serif"
+                        ...commonChartOptions.plugins.legend.labels,
+                        generateLabels: function(chart) {
+                            const data = chart.data;
+                            if (data.labels.length && data.datasets.length) {
+                                return data.labels.map((label, i) => {
+                                    const value = data.datasets[0].data[i];
+                                    const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return {
+                                        text: `${label}: ${value} (${percentage}%)`,
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                            return [];
                         }
                     }
                 },
                 title: {
                     display: true,
-                    text: 'Clients by Status',
+                    text: 'CLIENTS BY STATUS',
                     color: 'white',
                     font: {
-                        size: 16,
+                        size: 18,
                         weight: 'bold',
                         family: "'Inter', sans-serif"
                     },
@@ -104,18 +181,12 @@ function updateClientsChart() {
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: 'white',
-                    bodyColor: 'white',
-                    borderColor: 'rgba(255, 255, 255, 0.3)',
-                    borderWidth: 1,
-                    padding: 12,
-                    displayColors: true,
+                    ...commonChartOptions.plugins.tooltip,
                     callbacks: {
                         label: function(context) {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = ((context.parsed / total) * 100).toFixed(1);
-                            return `${context.label}: ${context.parsed} (${percentage}%)`;
+                            return `${context.label}: ${context.parsed} clients (${percentage}%)`;
                         }
                     }
                 }
@@ -145,17 +216,26 @@ function updateLeadsChart() {
     const labels = Object.keys(statusCounts);
     const data = Object.values(statusCounts);
     
-    // Color scheme for lead statuses
+    // Color scheme for lead statuses with higher saturation
     const colors = {
-        'New': 'rgba(52, 152, 219, 0.8)',
-        'Contacted': 'rgba(155, 89, 182, 0.8)',
-        'Qualified': 'rgba(26, 188, 156, 0.8)',
-        'Proposal Sent': 'rgba(230, 126, 34, 0.8)',
-        'Won': 'rgba(39, 174, 96, 0.8)',
-        'Lost': 'rgba(231, 76, 60, 0.8)'
+        'New': 'rgba(52, 152, 219, 0.95)',
+        'Contacted': 'rgba(155, 89, 182, 0.95)',
+        'Qualified': 'rgba(26, 188, 156, 0.95)',
+        'Proposal Sent': 'rgba(230, 126, 34, 0.95)',
+        'Won': 'rgba(39, 174, 96, 0.95)',
+        'Lost': 'rgba(231, 76, 60, 0.95)'
     };
     
-    const backgroundColors = labels.map(label => colors[label] || 'rgba(149, 165, 166, 0.8)');
+    const backgroundColors = labels.map(label => colors[label] || 'rgba(149, 165, 166, 0.95)');
+    const borderColors = labels.map(label => {
+        const color = colors[label] || 'rgba(149, 165, 166, 0.95)';
+        return color.replace('0.95', '1');
+    });
+    
+    // Add 3D shadow effect to canvas
+    canvas.style.filter = 'drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4))';
+    canvas.style.transform = 'perspective(1000px) rotateX(5deg)';
+    canvas.style.transformStyle = 'preserve-3d';
     
     chartInstances.leads = new Chart(canvas, {
         type: 'pie',
@@ -165,31 +245,44 @@ function updateLeadsChart() {
                 label: 'Leads by Status',
                 data: data,
                 backgroundColor: backgroundColors,
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-                borderWidth: 2
+                borderColor: borderColors,
+                borderWidth: 3,
+                hoverOffset: 15
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: true,
+            ...commonChartOptions,
             plugins: {
+                ...commonChartOptions.plugins,
                 legend: {
-                    position: 'bottom',
+                    ...commonChartOptions.plugins.legend,
                     labels: {
-                        color: 'white',
-                        padding: 15,
-                        font: {
-                            size: 12,
-                            family: "'Inter', sans-serif"
+                        ...commonChartOptions.plugins.legend.labels,
+                        generateLabels: function(chart) {
+                            const data = chart.data;
+                            if (data.labels.length && data.datasets.length) {
+                                return data.labels.map((label, i) => {
+                                    const value = data.datasets[0].data[i];
+                                    const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return {
+                                        text: `${label}: ${value} (${percentage}%)`,
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                            return [];
                         }
                     }
                 },
                 title: {
                     display: true,
-                    text: 'Leads by Status',
+                    text: 'LEADS BY STATUS',
                     color: 'white',
                     font: {
-                        size: 16,
+                        size: 18,
                         weight: 'bold',
                         family: "'Inter', sans-serif"
                     },
@@ -199,18 +292,12 @@ function updateLeadsChart() {
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: 'white',
-                    bodyColor: 'white',
-                    borderColor: 'rgba(255, 255, 255, 0.3)',
-                    borderWidth: 1,
-                    padding: 12,
-                    displayColors: true,
+                    ...commonChartOptions.plugins.tooltip,
                     callbacks: {
                         label: function(context) {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = ((context.parsed / total) * 100).toFixed(1);
-                            return `${context.label}: ${context.parsed} (${percentage}%)`;
+                            return `${context.label}: ${context.parsed} leads (${percentage}%)`;
                         }
                     }
                 }
@@ -244,30 +331,50 @@ function updateTasksChart() {
         }
     });
     
+    // Add 3D shadow effect to canvas
+    canvas.style.filter = 'drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4))';
+    canvas.style.transform = 'perspective(1000px) rotateX(5deg)';
+    canvas.style.transformStyle = 'preserve-3d';
+    
     chartInstances.tasks = new Chart(canvas, {
         type: 'bar',
         data: {
-            labels: ['High', 'Medium', 'Low'],
+            labels: ['High Priority', 'Medium Priority', 'Low Priority'],
             datasets: [{
-                label: 'Tasks by Priority',
+                label: 'Number of Tasks',
                 data: [priorityCounts.High, priorityCounts.Medium, priorityCounts.Low],
                 backgroundColor: [
-                    'rgba(255, 107, 107, 0.8)',
-                    'rgba(247, 183, 49, 0.8)',
-                    'rgba(46, 204, 113, 0.8)'
+                    'rgba(255, 107, 107, 0.95)',
+                    'rgba(247, 183, 49, 0.95)',
+                    'rgba(46, 204, 113, 0.95)'
                 ],
                 borderColor: [
                     'rgba(255, 107, 107, 1)',
                     'rgba(247, 183, 49, 1)',
                     'rgba(46, 204, 113, 1)'
                 ],
-                borderWidth: 2,
-                borderRadius: 8
+                borderWidth: 3,
+                borderRadius: 12,
+                borderSkipped: false,
+                barThickness: 60,
+                hoverBackgroundColor: [
+                    'rgba(255, 107, 107, 1)',
+                    'rgba(247, 183, 49, 1)',
+                    'rgba(46, 204, 113, 1)'
+                ]
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            layout: {
+                padding: {
+                    top: 20,
+                    bottom: 10,
+                    left: 10,
+                    right: 10
+                }
+            },
             scales: {
                 y: {
                     beginAtZero: true,
@@ -275,18 +382,34 @@ function updateTasksChart() {
                         color: 'white',
                         stepSize: 1,
                         font: {
+                            size: 14,
+                            weight: '600',
                             family: "'Inter', sans-serif"
                         }
                     },
                     grid: {
-                        color: 'rgba(255, 255, 255, 0.1)',
-                        drawBorder: false
+                        color: 'rgba(255, 255, 255, 0.15)',
+                        drawBorder: false,
+                        lineWidth: 2
+                    },
+                    title: {
+                        display: true,
+                        text: 'Number of Tasks',
+                        color: 'white',
+                        font: {
+                            size: 14,
+                            weight: 'bold',
+                            family: "'Inter', sans-serif"
+                        },
+                        padding: 10
                     }
                 },
                 x: {
                     ticks: {
                         color: 'white',
                         font: {
+                            size: 13,
+                            weight: '600',
                             family: "'Inter', sans-serif"
                         }
                     },
@@ -301,10 +424,10 @@ function updateTasksChart() {
                 },
                 title: {
                     display: true,
-                    text: 'Tasks by Priority',
+                    text: 'TASKS BY PRIORITY',
                     color: 'white',
                     font: {
-                        size: 16,
+                        size: 18,
                         weight: 'bold',
                         family: "'Inter', sans-serif"
                     },
@@ -314,16 +437,29 @@ function updateTasksChart() {
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.9)',
                     titleColor: 'white',
                     bodyColor: 'white',
                     borderColor: 'rgba(255, 255, 255, 0.3)',
-                    borderWidth: 1,
-                    padding: 12,
+                    borderWidth: 2,
+                    padding: 16,
                     displayColors: false,
+                    titleFont: {
+                        size: 16,
+                        weight: 'bold',
+                        family: "'Inter', sans-serif"
+                    },
+                    bodyFont: {
+                        size: 14,
+                        family: "'Inter', sans-serif"
+                    },
+                    cornerRadius: 8,
                     callbacks: {
+                        title: function(context) {
+                            return context[0].label;
+                        },
                         label: function(context) {
-                            return `Count: ${context.parsed.y}`;
+                            return `Tasks: ${context.parsed.y}`;
                         }
                     }
                 }
@@ -389,33 +525,33 @@ function renderChartStats() {
     return `
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="glass-card p-4">
-                <h4 class="text-white font-semibold mb-2">Client Summary</h4>
-                <div class="text-white text-sm opacity-75">
-                    <div>Total: ${stats.clients.total}</div>
-                    <div>Active: ${stats.clients.active}</div>
-                    <div>VIP: ${stats.clients.vip}</div>
+                <h4 class="text-white font-semibold mb-2 text-lg">Client Summary</h4>
+                <div class="text-white text-sm space-y-1">
+                    <div><strong>Total:</strong> ${stats.clients.total}</div>
+                    <div><strong>Active:</strong> ${stats.clients.active}</div>
+                    <div><strong>VIP:</strong> ${stats.clients.vip}</div>
                 </div>
             </div>
             <div class="glass-card p-4">
-                <h4 class="text-white font-semibold mb-2">Lead Summary</h4>
-                <div class="text-white text-sm opacity-75">
-                    <div>Total: ${stats.leads.total}</div>
-                    <div>New: ${stats.leads.new}</div>
-                    <div>Won: ${stats.leads.won}</div>
-                    <div>Conversion: ${stats.leads.conversionRate}%</div>
+                <h4 class="text-white font-semibold mb-2 text-lg">Lead Summary</h4>
+                <div class="text-white text-sm space-y-1">
+                    <div><strong>Total:</strong> ${stats.leads.total}</div>
+                    <div><strong>New:</strong> ${stats.leads.new}</div>
+                    <div><strong>Won:</strong> ${stats.leads.won}</div>
+                    <div><strong>Conversion:</strong> ${stats.leads.conversionRate}%</div>
                 </div>
             </div>
             <div class="glass-card p-4">
-                <h4 class="text-white font-semibold mb-2">Task Summary</h4>
-                <div class="text-white text-sm opacity-75">
-                    <div>Total: ${stats.tasks.total}</div>
-                    <div>Completed: ${stats.tasks.completed}</div>
-                    <div>Pending: ${stats.tasks.pending}</div>
-                    <div>Completion: ${stats.tasks.completionRate}%</div>
+                <h4 class="text-white font-semibold mb-2 text-lg">Task Summary</h4>
+                <div class="text-white text-sm space-y-1">
+                    <div><strong>Total:</strong> ${stats.tasks.total}</div>
+                    <div><strong>Completed:</strong> ${stats.tasks.completed}</div>
+                    <div><strong>Pending:</strong> ${stats.tasks.pending}</div>
+                    <div><strong>Completion:</strong> ${stats.tasks.completionRate}%</div>
                 </div>
             </div>
         </div>
     `;
 }
 
-console.log('✅ Charts Manager loaded');
+console.log('✅ Charts Manager loaded - 3D Style with Clear Text');
