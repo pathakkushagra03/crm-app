@@ -1,30 +1,38 @@
 // ========================================
-// USER MANAGEMENT (NO AUTHENTICATION)
+// AUTHENTICATION SYSTEM - NO LOGIN REQUIRED
 // ========================================
 
 const AuthManager = {
     currentUser: null,
     
     /**
-     * Initialize default user
+     * Initialize default user (called automatically)
      */
-    initializeDefaultUser() {
+    init() {
         this.currentUser = {
             id: 'default-user',
             name: 'CRM User',
             email: 'user@crm.com',
-            role: 'Admin'
+            role: 'Admin',
+            companies: []
         };
         AppState.currentUser = this.currentUser;
         AppState.role = this.currentUser.role;
-        return true;
     },
 
     /**
      * Check if user is authenticated
      */
     isAuthenticated() {
-        return true; // Always authenticated now
+        return true; // Always authenticated
+    },
+
+    /**
+     * Check stored session (no-op now)
+     */
+    checkStoredSession() {
+        this.init();
+        return true;
     },
 
     /**
@@ -93,7 +101,13 @@ const AuthManager = {
 
         const modal = CRUDManager.createModal('My Profile', content, footer);
         document.body.appendChild(modal);
-    }
+    },
+
+    // Removed functions:
+    showLoginForm() { this.init(); },
+    handleLogin() { this.init(); },
+    logout() { },
+    authenticateUser() { return this.currentUser; }
 };
 
 // Close user menu when clicking outside
@@ -104,4 +118,9 @@ document.addEventListener('click', (e) => {
     }
 });
 
-console.log('✅ User Manager loaded (No Authentication Required)');
+// Auto-initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    AuthManager.init();
+});
+
+console.log('✅ Authentication Manager loaded - No login required');
