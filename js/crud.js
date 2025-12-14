@@ -1348,3 +1348,310 @@ const CRUDManager = {
 };
 
 console.log('✅ CRUD Manager loaded - All operations ready');
+
+// ========================================
+// FIXED CLIENT CRUD OPERATIONS
+// Add this to your js/crud.js file
+// ========================================
+
+// Replace the existing client CRUD functions with these improved versions
+
+const ClientCRUD = {
+    showAddClientForm() {
+        const users = AppState.data.users.filter(u => 
+            u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
+        );
+        
+        const content = `
+            <form id="addClientForm">
+                <div class="form-group">
+                    <label class="form-label required">Client Name</label>
+                    <input type="text" name="name" class="form-input" placeholder="Enter client name" required>
+                    <div class="form-error">Client name is required</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-input" placeholder="client@example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="tel" name="phone" class="form-input" placeholder="+1 (555) 000-0000">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Lead Type</label>
+                    <input type="text" name="leadType" class="form-input" placeholder="e.g., Referral, Online, Event">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label required">Status</label>
+                    <select name="status" class="form-select" required>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                        <option value="On Hold">On Hold</option>
+                        <option value="VIP">VIP</option>
+                        <option value="Churned">Churned</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Priority</label>
+                    <select name="priority" class="form-select">
+                        <option value="">None</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Assigned User</label>
+                    <select name="assignedUser" class="form-select">
+                        <option value="">Unassigned</option>
+                        ${users.map(user => `<option value="${user.id}">${user.name}</option>`).join('')}
+                    </select>
+                </div>
+            </form>
+        `;
+
+        const footer = `
+            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+            <button class="btn btn-primary" onclick="ClientCRUD.submitAddClient()">Create Client</button>
+        `;
+
+        const modal = CRUDManager.createModal('Add New Client', content, footer);
+        document.body.appendChild(modal);
+    },
+
+    async submitAddClient() {
+        const form = document.getElementById('addClientForm');
+        if (!CRUDManager.validateForm(form)) return;
+
+        const data = CRUDManager.getFormData(form);
+        data.company = AppState.selectedCompany;
+
+        try {
+            if (AirtableAPI.isConfigured()) {
+                await AirtableAPI.addClient(data);
+                CRUDManager.showToast('✅ Client created successfully!', 'success');
+            } else {
+                // Demo mode
+                AppState.data.clients.push({
+                    id: 'demo-client-' + Date.now().toString(),
+                    ...data,
+                    dealValue: 0,
+                    rating: 0
+                });
+                CRUDManager.showToast('✅ Client created (demo mode)', 'success');
+            }
+
+            await loadCompanyData(AppState.selectedCompany);
+            render();
+            document.querySelector('.modal-overlay').remove();
+        } catch (error) {
+            console.error('Error creating client:', error);
+            CRUDManager.showToast(`❌ Failed to create client: ${error.message}`, 'error');
+        }
+    },
+
+    showEditClientForm(clientId) {
+        const client = AppState.data.clients.find(c => c.id === clientId);
+        if (!client) {
+            CRUDManager.showToast('❌ Client not found', 'error');
+            return;
+        }
+
+        const users = AppState.data.users.filter(u => 
+            u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
+        );
+        
+        const content = `
+            <form id="editClientForm">
+                <div class="form-group">
+                    <label class="form-label required">Client Name</label>
+                    <input type="text" name="name" class="form-input" value="${client.name || ''}" required>
+                    <div class="form-error">Client name is required</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-input" value="${client.email || ''}">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="tel" name="phone" class="form-input" value="${client.phone || ''}">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Lead Type</label>
+                    <input type="text" name="leadType" class="form-input" value="${client.leadType || ''}">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label required">Status</label>
+                    <select name="status" class="form-select" required>
+                        <option value="Active" ${client.status === 'Active' ? 'selected' : ''}>Active</option>
+                        <option value="Inactive" ${client.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+                        <option value="On Hold" ${client.status === 'On Hold' ? 'selected' : ''}>On Hold</option>
+                        <option value="VIP" ${client.status === 'VIP' ? 'selected' : ''}>VIP</option>
+                        <option value="Churned" ${client.status === 'Churned' ? 'selected' : ''}>Churned</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Priority</label>
+                    <select name="priority" class="form-select">
+                        <option value="">None</option>
+                        <option value="High" ${client.priority === 'High' ? 'selected' : ''}>High</option>
+                        <option value="Medium" ${client.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                        <option value="Low" ${client.priority === 'Low' ? 'selected' : ''}>Low</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Assigned User</label>
+                    <select name="assignedUser" class="form-select">
+                        <option value="">Unassigned</option>
+                        ${users.map(user => `
+                            <option value="${user.id}" ${client.assignedUser === user.id ? 'selected' : ''}>
+                                ${user.name}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Address</label>
+                    <textarea name="address" class="form-textarea" placeholder="Client address">${client.address || ''}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea name="notes" class="form-textarea" placeholder="Additional notes">${client.notes || ''}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Deal Value ($)</label>
+                    <input type="number" name="dealValue" class="form-input" value="${client.dealValue || 0}" min="0" step="100">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Rating (1-5)</label>
+                    <select name="rating" class="form-select">
+                        <option value="0" ${!client.rating || client.rating === 0 ? 'selected' : ''}>Not Rated</option>
+                        <option value="1" ${client.rating === 1 ? 'selected' : ''}>⭐ 1 Star</option>
+                        <option value="2" ${client.rating === 2 ? 'selected' : ''}>⭐⭐ 2 Stars</option>
+                        <option value="3" ${client.rating === 3 ? 'selected' : ''}>⭐⭐⭐ 3 Stars</option>
+                        <option value="4" ${client.rating === 4 ? 'selected' : ''}>⭐⭐⭐⭐ 4 Stars</option>
+                        <option value="5" ${client.rating === 5 ? 'selected' : ''}>⭐⭐⭐⭐⭐ 5 Stars</option>
+                    </select>
+                </div>
+            </form>
+        `;
+
+        const footer = `
+            <button class="btn btn-danger" onclick="ClientCRUD.deleteClient('${clientId}')">🗑️ Delete</button>
+            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+            <button class="btn btn-primary" onclick="ClientCRUD.submitEditClient('${clientId}')">💾 Update Client</button>
+        `;
+
+        const modal = CRUDManager.createModal('Edit Client', content, footer);
+        document.body.appendChild(modal);
+    },
+
+    async submitEditClient(clientId) {
+        const form = document.getElementById('editClientForm');
+        if (!CRUDManager.validateForm(form)) return;
+
+        const rawData = CRUDManager.getFormData(form);
+        
+        // Clean and prepare data
+        const data = {
+            name: rawData.name,
+            email: rawData.email || '',
+            phone: rawData.phone || '',
+            status: rawData.status,
+            assignedUser: rawData.assignedUser || null,
+            leadType: rawData.leadType || '',
+            priority: rawData.priority || '',
+            address: rawData.address || '',
+            notes: rawData.notes || '',
+            dealValue: parseFloat(rawData.dealValue) || 0,
+            rating: parseInt(rawData.rating) || 0
+        };
+
+        console.log('Updating client with data:', data);
+
+        try {
+            if (AirtableAPI.isConfigured()) {
+                // Update in Airtable
+                const result = await AirtableAPI.updateClient(clientId, data);
+                console.log('Airtable update result:', result);
+                CRUDManager.showToast('✅ Client updated successfully!', 'success');
+            } else {
+                // Demo mode - update in memory
+                const clientIndex = AppState.data.clients.findIndex(c => c.id === clientId);
+                if (clientIndex !== -1) {
+                    AppState.data.clients[clientIndex] = {
+                        ...AppState.data.clients[clientIndex],
+                        ...data
+                    };
+                }
+                CRUDManager.showToast('✅ Client updated (demo mode)', 'success');
+            }
+
+            // Reload data and refresh UI
+            await loadCompanyData(AppState.selectedCompany);
+            render();
+            document.querySelector('.modal-overlay').remove();
+            
+        } catch (error) {
+            console.error('Error updating client:', error);
+            
+            // More detailed error message
+            let errorMsg = 'Failed to update client';
+            if (error.message) {
+                errorMsg += ': ' + error.message;
+            }
+            
+            CRUDManager.showToast(`❌ ${errorMsg}`, 'error');
+        }
+    },
+
+    deleteClient(clientId) {
+        CRUDManager.showConfirmDialog(
+            '🗑️ Delete Client',
+            'Are you sure you want to delete this client? This action cannot be undone.',
+            async () => {
+                try {
+                    if (AirtableAPI.isConfigured()) {
+                        await AirtableAPI.deleteClient(clientId);
+                        CRUDManager.showToast('✅ Client deleted successfully!', 'success');
+                    } else {
+                        AppState.data.clients = AppState.data.clients.filter(c => c.id !== clientId);
+                        CRUDManager.showToast('✅ Client deleted (demo mode)', 'success');
+                    }
+
+                    await loadCompanyData(AppState.selectedCompany);
+                    render();
+                    document.querySelector('.modal-overlay')?.remove();
+                } catch (error) {
+                    console.error('Error deleting client:', error);
+                    CRUDManager.showToast(`❌ Failed to delete client: ${error.message}`, 'error');
+                }
+            }
+        );
+    }
+};
+
+// Add ClientCRUD to CRUDManager
+CRUDManager.showAddClientForm = ClientCRUD.showAddClientForm;
+CRUDManager.showEditClientForm = ClientCRUD.showEditClientForm;
+CRUDManager.submitAddClient = ClientCRUD.submitAddClient;
+CRUDManager.submitEditClient = ClientCRUD.submitEditClient;
+CRUDManager.deleteClient = ClientCRUD.deleteClient;
+
+console.log('✅ Fixed Client CRUD Operations loaded');
