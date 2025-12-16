@@ -1,3 +1,6 @@
+function sanitizeInput(str) {
+  return str.replace(/[<>&"'`]/g, "");
+}
 // ========================================
 // CRUD OPERATIONS & MODAL MANAGEMENT
 // Complete CRUD.js file - Replace your js/crud.js with this
@@ -104,7 +107,7 @@ const CRUDManager = {
         const formData = new FormData(formElement);
         const data = {};
         for (let [key, value] of formData.entries()) {
-            data[key] = value;
+            data[key] = sanitizeInput(value);
         }
         return data;
     },

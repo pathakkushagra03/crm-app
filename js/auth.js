@@ -1,3 +1,4 @@
+console.warn("⚠️ DEMO MODE: Client-side auth is NOT secure.");
 // ========================================
 // THEME MANAGER - Light/Dark/Auto Support
 // ========================================
