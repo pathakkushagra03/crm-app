@@ -212,19 +212,26 @@ function goForward() {
 async function loadCompanies() {
     AppState.loading = true;
     render();
-    
+
     try {
-        if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+        if (AirtableAPI && AirtableAPI.isConfigured()) {
             const result = await AirtableAPI.getCompanies();
             AppState.data.companies = result.records || [];
-        } else {
-            console.warn('Airtable not configured, using demo data');
-            generateDemoData();
         }
+
+        // 🚑 DEMO FALLBACK (IMPORTANT)
+        if (!AppState.data.companies || AppState.data.companies.length === 0) {
+            AppState.data.companies = [
+                { id: '1', name: 'Demo Company', color: '#667eea' }
+            ];
+        }
+
     } catch (error) {
-        console.error('Error loading companies:', error);
-        AppState.error = 'Failed to load companies';
-        generateDemoData();
+        console.error('Company load failed, using demo data');
+
+        AppState.data.companies = [
+            { id: '1', name: 'Demo Company', color: '#667eea' }
+        ];
     } finally {
         AppState.loading = false;
         render();
