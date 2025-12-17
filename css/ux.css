@@ -1,0 +1,658 @@
+/*
+ * UX & PERFORMANCE STYLES
+ * Styles for loading skeletons, animations, and improved UX
+ * 
+ * WHAT THIS FILE DOES:
+ * - Makes loading states look professional (shimmer effect)
+ * - Smooth animations for everything
+ * - Responsive design improvements
+ */
+
+/* ========================================
+   LOADING SKELETONS
+   ======================================== */
+
+/*
+ * WHAT ARE LOADING SKELETONS?
+ * 
+ * Those gray animated boxes you see on YouTube/Facebook
+ * while content is loading. They show the SHAPE of content
+ * before the real content appears.
+ * 
+ * The "shimmer" animation makes it look like it's loading.
+ */
+
+.skeleton-card {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05) !important;
+    pointer-events: none;
+}
+
+/* The shimmer effect that moves across */
+.skeleton-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.1),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* Different skeleton element types */
+.skeleton-line {
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.skeleton-title {
+    height: 20px;
+    width: 60%;
+}
+
+.skeleton-text {
+    height: 14px;
+    width: 100%;
+}
+
+.skeleton-text-small {
+    height: 12px;
+    width: 40%;
+}
+
+.skeleton-badge {
+    height: 24px;
+    width: 80px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+}
+
+.skeleton-avatar {
+    width: 48px;
+    height: 48px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.skeleton-icon {
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    margin: 0 auto;
+}
+
+/* Loading spinner */
+.skeleton-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========================================
+   EMPTY STATES
+   ======================================== */
+
+/*
+ * EMPTY STATES = Beautiful screens when there's no data
+ * Instead of showing a blank page, show helpful content!
+ */
+
+.animate-bounce-slow {
+    animation: bounce-slow 3s ease-in-out infinite;
+}
+
+@keyframes bounce-slow {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-20px);
+    }
+}
+
+/* Make empty state icons pulse slightly */
+.empty-state-icon {
+    animation: pulse-subtle 3s ease-in-out infinite;
+}
+
+@keyframes pulse-subtle {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+/* ========================================
+   IMPROVED ANIMATIONS
+   ======================================== */
+
+/*
+ * SMOOTH ANIMATIONS make your app feel premium
+ * Everything slides, fades, or scales smoothly
+ */
+
+/* Fade in animation for new content */
+.fade-in {
+    animation: fadeIn 0.6s ease forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Slide in from right */
+.slide-in-right {
+    animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Scale in animation */
+.scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Stagger animation delays for lists */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+.stagger-6 { animation-delay: 0.6s; }
+
+/* ========================================
+   LOADING STATES
+   ======================================== */
+
+/* Loading overlay for buttons */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid white;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+/* Loading bar at top of page */
+.loading-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.8),
+        transparent
+    );
+    z-index: 9999;
+    animation: loadingBar 2s ease-in-out infinite;
+}
+
+@keyframes loadingBar {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* ========================================
+   PAGINATION STYLES
+   ======================================== */
+
+/*
+ * PAGINATION = "Load More" buttons and page indicators
+ * Shows progress: "Showing 25 of 100"
+ */
+
+.pagination-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 20px;
+}
+
+.pagination-info {
+    color: white;
+    opacity: 0.75;
+    font-size: 14px;
+}
+
+.pagination-button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 600;
+}
+
+.pagination-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.pagination-button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ========================================
+   IMPROVED TOAST NOTIFICATIONS
+   ======================================== */
+
+/*
+ * TOAST MESSAGES = Little notifications that pop up
+ * Like "✅ Saved!" or "❌ Error!"
+ */
+
+/* Success toast - green tint */
+.toast-success {
+    background: rgba(46, 204, 113, 0.25) !important;
+    border-color: rgba(46, 204, 113, 0.6) !important;
+}
+
+/* Error toast - red tint */
+.toast-error {
+    background: rgba(231, 76, 60, 0.25) !important;
+    border-color: rgba(231, 76, 60, 0.6) !important;
+}
+
+/* Info toast - blue tint */
+.toast-info {
+    background: rgba(52, 152, 219, 0.25) !important;
+    border-color: rgba(52, 152, 219, 0.6) !important;
+}
+
+/* Warning toast - yellow tint */
+.toast-warning {
+    background: rgba(241, 196, 15, 0.25) !important;
+    border-color: rgba(241, 196, 15, 0.6) !important;
+}
+
+/* Make toasts slide in smoother */
+.toast {
+    animation: toastSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Toast exit animation */
+.toast-exit {
+    animation: toastSlideOut 0.3s ease forwards;
+}
+
+@keyframes toastSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+/* ========================================
+   ERROR STATES
+   ======================================== */
+
+/*
+ * ERROR STATES = How errors look (red border, icon, etc.)
+ */
+
+.error-container {
+    background: rgba(231, 76, 60, 0.1);
+    border: 2px solid rgba(231, 76, 60, 0.5);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.error-icon {
+    font-size: 48px;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.error-title {
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.error-message {
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.error-suggestions {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+/* ========================================
+   SMOOTH TRANSITIONS
+   ======================================== */
+
+/*
+ * SMOOTH TRANSITIONS = Everything changes smoothly, not instantly
+ * Makes app feel more polished
+ */
+
+/* Smooth transitions for all interactive elements */
+button,
+.btn,
+.glass-card,
+.sidebar-item,
+input,
+select,
+textarea {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth opacity changes */
+.opacity-transition {
+    transition: opacity 0.3s ease;
+}
+
+/* Smooth height changes (for expanding/collapsing) */
+.height-transition {
+    transition: max-height 0.5s ease;
+    overflow: hidden;
+}
+
+/* ========================================
+   FOCUS STATES (Accessibility)
+   ======================================== */
+
+/*
+ * FOCUS STATES = Visible outline when you Tab through elements
+ * Critical for keyboard users and accessibility
+ */
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+    outline: 3px solid rgba(102, 126, 234, 0.8);
+    outline-offset: 2px;
+}
+
+/* Remove default focus outline (we have our own) */
+button:focus,
+input:focus,
+select:focus,
+textarea:focus,
+a:focus {
+    outline: none;
+}
+
+/* ========================================
+   SCROLL BEHAVIOR
+   ======================================== */
+
+/*
+ * SCROLL BEHAVIOR = Smooth scrolling, custom scrollbars
+ */
+
+/* Smooth scrolling for the whole page */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+    background-clip: padding-box;
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/*
+ * UTILITY CLASSES = Quick helper classes for common needs
+ */
+
+/* Hide element but keep accessible for screen readers */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Disable all interactions */
+.pointer-events-none {
+    pointer-events: none;
+}
+
+/* No text selection (for UI elements) */
+.no-select {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Truncate text with ellipsis */
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ========================================
+   RESPONSIVE IMPROVEMENTS
+   ======================================== */
+
+/*
+ * RESPONSIVE = Works on all screen sizes
+ * Phone, tablet, desktop
+ */
+
+/* Better mobile experience */
+@media (max-width: 768px) {
+    /* Larger touch targets on mobile */
+    .btn,
+    button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Reduce padding on mobile */
+    .glass-card {
+        padding: 16px;
+    }
+    
+    /* Stack pagination buttons vertically */
+    .pagination-container {
+        flex-direction: column;
+    }
+    
+    /* Smaller text on mobile */
+    .skeleton-title {
+        height: 16px;
+    }
+    
+    /* Smaller skeletons */
+    .skeleton-avatar {
+        width: 40px;
+        height: 40px;
+    }
+}
+
+/* ========================================
+   PERFORMANCE OPTIMIZATIONS
+   ======================================== */
+
+/*
+ * PERFORMANCE = Make animations smooth, reduce lag
+ */
+
+/* Use GPU acceleration for animations */
+.glass-card,
+.btn,
+.sidebar-item,
+.toast {
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+/* Reduce motion for users who prefer it (accessibility) */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+
+/*
+ * PRINT STYLES = How page looks when printed
+ */
+
+@media print {
+    /* Hide interactive elements when printing */
+    .btn,
+    button,
+    .toast,
+    .sidebar,
+    .topbar,
+    .loading-bar,
+    .skeleton-card {
+        display: none !important;
+    }
+    
+    /* Use plain colors for printing */
+    .glass-card {
+        background: white !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* Black text for printing */
+    * {
+        color: black !important;
+    }
+}

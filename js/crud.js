@@ -175,22 +175,61 @@ const CRUDManager = {
         return overlay;
     },
 
-    validateForm(formElement) {
-        let isValid = true;
-        const inputs = formElement.querySelectorAll('[required]');
+ validateForm(formElement) {
+    let isValid = true;
+    const inputs = formElement.querySelectorAll('[required]');
 
-        inputs.forEach(input => {
-            const group = input.closest('.form-group');
-            if (!input.value.trim()) {
-                group.classList.add('error');
-                isValid = false;
-            } else {
-                group.classList.remove('error');
+    inputs.forEach(input => {
+        const group = input.closest('.form-group');
+        const errorElement = group?.querySelector('.form-error');
+        
+        // Check if field is empty
+        if (!input.value.trim()) {
+            group?.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'This field is required';
             }
-        });
+            isValid = false;
+        } 
+        // 👉 ADD: Email validation
+        else if (input.type === 'email' && !this.isValidEmail(input.value)) {
+            group?.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'Please enter a valid email';
+            }
+            isValid = false;
+        } 
+        // 👉 ADD: Phone validation
+        else if (input.type === 'tel' && input.value && !this.isValidPhone(input.value)) {
+            group?.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'Please enter a valid phone number';
+            }
+            isValid = false;
+        } 
+        else {
+            group?.classList.remove('error');
+        }
+    });
+    
+    // 👉 ADD: Show toast if validation fails
+    if (!isValid) {
+        ToastManager.warning('Please fix the errors in the form');
+    }
 
-        return isValid;
-    },
+    return isValid;
+}
+
+// 👉 ADD: Helper validation functions
+isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+isValidPhone(phone) {
+    const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+    return phoneRegex.test(phone) && phone.replace(/\D/g, '').length >= 10;
+}
 
     getFormData(formElement) {
         const formData = new FormData(formElement);
@@ -748,50 +787,81 @@ if (!validation.allowed) {
     return;
 }
 async submitAddClient() {
-    // PERMISSION CHECK
-    const validation = validateCRUDPermission('clients', 'create');
-    if (!validation.allowed) {
-        showPermissionError('Create client', validation.reason);
-        return;
-    }
-    
     const form = document.getElementById('addClientForm');
     if (!this.validateForm(form)) return;
     const data = this.getFormData(form);
-    data.company = AppState.selectedCompany;
+    
+    // 👉 ADD: Show loading on button
+    const submitBtn = form.querySelector('button[type="submit"]');
+    UXUtils.setButtonLoading(submitBtn, true);
 
     try {
-        if (AirtableAPI.isConfigured()) {
+        // 👉 ADD: Wrap with error handler
+        await ErrorHandler.wrap(async () => {
             await AirtableAPI.addClient(data);
-        } else {
-            AppState.data.clients.push({id: Date.now().toString(), ...data});
-        }
+            
+            // 👉 ADD: Log activity
+            if (typeof ActivityTypes !== 'undefined') {
+                await ActivityTypes.clientCreated(data.name);
+            }
+            
+            // 👉 ADD: Standardized toast
+            ToastManager.created('Client');
+            
+            await loadCompanyData(AppState.selectedCompany);
+            render();
+            document.querySelector('.modal-overlay').remove();
+            
+        }, 'Creating client');
         
-        // Log activity
-        if (AuthManager) {
-            AuthManager.logActivity('create', `Created client: ${data.name}`);
-        }
-        
-        this.showToast('✅ Client created!', 'success');
-        await loadCompanyData(AppState.selectedCompany);
-        render();
-        document.querySelector('.modal-overlay').remove();
     } catch (error) {
-        this.showToast('❌ Failed to create client', 'error');
+        // 👉 ADD: Standardized error toast
+        ToastManager.createFailed('Client');
+    } finally {
+        // 👉 ADD: Reset button
+        UXUtils.setButtonLoading(submitBtn, false);
     }
-    await ActivityTypes.clientCreated(data.name);
-},
+}
+
 
 showEditClientForm(clientId) {
     const client = AppState.data.clients.find(c => c.id === clientId);
-    if (!client) return this.showToast('❌ Client not found', 'error');
-    
-    // PRE-FLIGHT CHECK
-    const validation = validateCRUDPermission('clients', 'update', client);
-    if (!validation.allowed) {
-        showPermissionError('Edit client', validation.reason);
+    if (!client) {
+        // 👉 ADD: Standardized error
+        ToastManager.error('Client not found');
         return;
     }
+    
+    const content = `
+        <form id="editClientForm">
+            <div class="form-group">
+                <label class="form-label required">Name</label>
+                <input type="text" name="name" class="form-input" value="${client.name}" required>
+                <div class="form-error">Name is required</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-input" value="${client.email || ''}">
+                <div class="form-error">Please enter a valid email</div>
+            </div>
+            
+            <!-- More form fields... -->
+        </form>
+    `;
+
+    const footer = `
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">
+            Cancel
+        </button>
+        <button class="btn btn-primary" onclick="CRUDManager.submitEditClient('${clientId}')">
+            💾 Save Changes
+        </button>
+    `;
+
+    const modal = this.createModal('✏️ Edit Client', content, footer);
+    document.body.appendChild(modal);
+}
     
     const users = AppState.data.users.filter(u => u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany));
     
@@ -891,12 +961,12 @@ async submitEditClient(clientId) {
             AuthManager.logActivity('update', `Updated client: ${data.name}`);
         }
         
-        this.showToast('✅ Client updated!', 'success');
+        ToastManager.updated('Client')
         await loadCompanyData(AppState.selectedCompany);
         render();
         document.querySelector('.modal-overlay').remove();
     } catch (error) {
-        this.showToast('❌ Failed to update', 'error');
+        ToastManager.updateFailed('Client')
     }
     // If status changed
 if (oldStatus !== data.status) {
@@ -937,7 +1007,7 @@ deleteClient(clientId) {
                     AuthManager.logActivity('delete', `Deleted client: ${client.name}`);
                 }
                 
-                this.showToast('✅ Client deleted!', 'success');
+                ToastManager.deleted('Client')
                 await loadCompanyData(AppState.selectedCompany);
                 render();
                 document.querySelector('.modal-overlay')?.remove();

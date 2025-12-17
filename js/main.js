@@ -168,14 +168,23 @@ function renderStatusBadge(entityType, status, options = {}) {
 // NAVIGATION SYSTEM
 // ========================================
 function navigateTo(view, data = {}) {
+    if (view !== AppState.currentView) {
+        Pagination.reset(view);
+    }
+    
     AppState.history = AppState.history.slice(0, AppState.historyIndex + 1);
     AppState.history.push({ view, data });
     AppState.historyIndex++;
     
     AppState.currentView = view;
     Object.assign(AppState, data);
+    
+    // 👉 ADD: Smooth scroll to top
+    UXUtils.scrollToTop();
+    
     render();
 }
+
 
 function goBack() {
     if (AppState.historyIndex > 0) {
@@ -224,29 +233,46 @@ async function loadCompanies() {
 
 async function loadCompanyData(companyId) {
     AppState.loading = true;
-    render();
+    
+    // 👉 ADD: Show loading skeletons immediately
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) {
+        mainContent.innerHTML = `
+            <div class="glass-card p-6">
+                <div class="skeleton-line skeleton-title mb-6"></div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    ${LoadingSkeleton.renderCards(6)}
+                </div>
+            </div>
+        `;
+    }
     
     try {
-        if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
-            const [users, clients, leads, generalTodos, clientTodos] = await Promise.all([
-                AirtableAPI.getUsers(companyId),
+        // 👉 ADD: Wrap with error handler
+        await ErrorHandler.wrap(async () => {
+            const [clients, leads, tasks] = await Promise.all([
                 AirtableAPI.getClients(companyId),
                 AirtableAPI.getLeads(companyId),
-                AirtableAPI.getGeneralTodos(companyId),
-                AirtableAPI.getClientTodos(companyId)
+                AirtableAPI.getGeneralTodos(companyId)
             ]);
             
-            AppState.data.users = users.records;
             AppState.data.clients = clients.records;
             AppState.data.leads = leads.records;
-            AppState.data.generalTodos = generalTodos.records;
-            AppState.data.clientTodos = clientTodos.records;
-        } else {
-            console.warn('Airtable not configured, using demo data');
-        }
+            AppState.data.generalTodos = tasks.records;
+            
+            // 👉 ADD: Show success toast
+            ToastManager.loaded('company data');
+            
+        }, 'Loading company data');
+        
     } catch (error) {
-        console.error('Error loading company data:', error);
-        AppState.error = 'Failed to load company data';
+        // Error already handled by ErrorHandler.wrap()
+        // Show error state in UI
+        if (mainContent) {
+            mainContent.innerHTML = EmptyState.error(
+                'Failed to load company data. Please try again.'
+            );
+        }
     } finally {
         AppState.loading = false;
         render();
@@ -517,14 +543,14 @@ const Views = {
     const company = AppState.data.companies.find(c => c.id === AppState.selectedCompany);
     if (!company) return '<div class="text-white">Company not found</div>';
     
-    // Filter clients based on user permissions
+    // Get all clients
     const allClients = AppState.data.clients.filter(c => c.company === AppState.selectedCompany);
-    const clients = getFilteredData('clients', allClients);
+    const filteredClients = getFilteredData('clients', allClients);
     
-    const users = AppState.data.users.filter(u => 
-        u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
-    );
-
+    // 👇 ADD PAGINATION
+    const paginatedResult = Pagination.getPage(filteredClients, 'clients');
+    const clients = paginatedResult.data;
+    
     return `
         ${renderSidebar(company, 'clients')}
         ${renderTopbar(company, 'Clients')}
@@ -534,13 +560,8 @@ const Views = {
                 <div class="flex items-center justify-between mb-6">
                     <div>
                         <h2 class="text-white text-2xl font-bold">
-                            ${AuthManager.hasDetailedPermission('clients', 'viewAll') ? 'All' : 'My'} Clients (${clients.length})
+                            ${AuthManager.hasDetailedPermission('clients', 'viewAll') ? 'All' : 'My'} Clients
                         </h2>
-                        ${!AuthManager.hasDetailedPermission('clients', 'viewAll') && allClients.length > clients.length ? `
-                            <p class="text-white text-sm opacity-75 mt-1">
-                                Showing ${clients.length} of ${allClients.length} total clients (assigned to you)
-                            </p>
-                        ` : ''}
                     </div>
                     ${renderActionButton('clients', 'create', `
                         <button class="btn btn-primary" onclick="if(typeof CRUDManager !== 'undefined') CRUDManager.showAddClientForm()">
@@ -549,39 +570,23 @@ const Views = {
                     `)}
                 </div>
 
-                ${clients.length === 0 ? `
-                    <div class="text-center text-white opacity-75 py-12">
-                        <div class="text-6xl mb-4">💼</div>
-                        <h3 class="text-xl font-bold mb-2">No Clients ${AuthManager.hasDetailedPermission('clients', 'viewAll') ? 'Yet' : 'Assigned to You'}</h3>
-                        <p>${canShowAction('clients', 'create') ? 'Click "Add Client" to get started' : 'Contact your manager to get clients assigned'}</p>
-                    </div>
-                ` : `
+                ${clients.length === 0 ? 
+                    // 👇 USE EMPTY STATE
+                    EmptyState.noClients()
+                : `
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        ${clients.map((client, index) => {
-                            const assignedUser = users.find(u => u.id === client.assignedUser);
-                            const canEdit = AuthManager.canEditRecord('clients', client);
-                            
-                            return `
-                                <div class="glass-card p-4 fade-in ${canEdit ? 'cursor-pointer hover:scale-105' : 'opacity-75'} transition-transform"
-                                     style="animation-delay: ${index * 0.05}s"
-                                     ${canEdit ? `onclick="if(typeof CRUDManager !== 'undefined') CRUDManager.showEditClientForm('${client.id}')"` : ''}>
-                                    <div class="flex items-start justify-between mb-2">
-                                        <h3 class="text-white font-bold text-lg">${client.name}</h3>
-                                        ${client.rating ? `<div class="text-yellow-400">${'⭐'.repeat(client.rating)}</div>` : ''}
-                                    </div>
-                                    <p class="text-white text-sm opacity-75 mb-1">${client.email || 'No email'}</p>
-                                    <p class="text-white text-sm opacity-75 mb-2">${client.phone || 'No phone'}</p>
-                                    <div class="mb-2">
-                                        ${renderStatusBadge('client', client.status, { showIcon: true })}
-                                        ${client.priority ? `<span class="status-badge ml-2">${client.priority}</span>` : ''}
-                                    </div>
-                                    ${client.dealValue ? `<p class="text-white text-sm mb-1">💰 $${client.dealValue.toLocaleString()}</p>` : ''}
-                                    ${assignedUser ? `<p class="text-white text-sm opacity-75">👤 ${assignedUser.name}</p>` : ''}
-                                    ${!canEdit ? '<div class="text-white text-xs opacity-50 mt-2">🔒 View Only</div>' : ''}
-                                </div>
-                            `;
-                        }).join('')}
+                        ${clients.map((client, index) => `
+                            <div class="glass-card p-4 fade-in stagger-${Math.min(index + 1, 6)} cursor-pointer hover:scale-105 transition-transform"
+                                 ${canEdit ? `onclick="CRUDManager.showEditClientForm('${client.id}')"` : ''}>
+                                <!-- Your existing client card content -->
+                            </div>
+                        `).join('')}
                     </div>
+                    
+                    <!-- 👇 ADD LOAD MORE BUTTON -->
+                    ${Pagination.renderLoadMoreButton('clients', 
+                        paginatedResult.currentCount, 
+                        paginatedResult.totalCount)}
                 `}
             </div>
         </div>
@@ -747,18 +752,20 @@ const Views = {
 activities: () => {
     const company = AppState.data.companies.find(c => c.id === AppState.selectedCompany);
     if (!company) return '<div class="text-white">Company not found</div>';
-
+    
     return `
         ${renderSidebar(company, 'activities')}
         ${renderTopbar(company, 'Activities')}
 
         <div class="main-content" id="activitiesView">
-            <!-- Loading placeholder -->
-            <div class="text-white text-center py-12">Loading activities...</div>
+            <!-- 👉 ADD: Show loading skeleton initially -->
+            <div class="glass-card p-6">
+                <div class="skeleton-line skeleton-title mb-6"></div>
+                ${LoadingSkeleton.renderListItems(5)}
+            </div>
         </div>
     `;
-},
-
+}
 // ========================================
 // HELPER FUNCTIONS
 // ========================================
@@ -875,13 +882,37 @@ if (AppState.currentView === 'dashboard') {
 }
         // Load activities for activities view - ADD THIS
         if (AppState.currentView === 'activities') {
-            setTimeout(async () => {
-                const container = document.getElementById('activitiesView');
-                if (container) {
-                    container.innerHTML = await ActivityTimeline.render();
-                }
-            }, 100);
+    setTimeout(async () => {
+        const container = document.getElementById('activitiesView');
+        if (container && typeof ActivityTimeline !== 'undefined') {
+            // Get paginated activities
+            const allActivities = await ActivityLogger.getActivities();
+            const paginatedResult = Pagination.getPage(allActivities, 'activities');
+            
+            container.innerHTML = `
+                <div class="glass-card p-6">
+                    <h2 class="text-white text-2xl font-bold mb-6">
+                        Activity Timeline
+                    </h2>
+                    
+                    ${paginatedResult.data.length === 0 ? 
+                        EmptyState.noActivities()
+                    : `
+                        <div class="space-y-4">
+                            ${paginatedResult.data.map(a => 
+                                ActivityTimeline.renderActivityItem(a)
+                            ).join('')}
+                        </div>
+                        
+                        ${Pagination.renderLoadMoreButton('activities', 
+                            paginatedResult.currentCount, 
+                            paginatedResult.totalCount)}
+                    `}
+                </div>
+            `;
         }
+    }, 100);
+}
     }
 }
 
