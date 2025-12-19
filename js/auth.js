@@ -477,6 +477,60 @@ const AuthManager = {
         return permissions[role]?.includes(action) || false;
     },
 
+    // ========================================
+    // MISSING METHODS FOR CRUD PERMISSION VALIDATION
+    // ========================================
+    
+    hasDetailedPermission(resource, operation) {
+        if (!this.currentUser) return false;
+        
+        const role = this.currentUser.role;
+        
+        // Admin can do everything
+        if (role === 'Admin') return true;
+        
+        // Manager can do most things except manage users/companies
+        if (role === 'Manager') {
+            if (resource === 'users' || resource === 'companies') {
+                return operation === 'read';
+            }
+            return ['create', 'read', 'update', 'delete'].includes(operation);
+        }
+        
+        // Sales can create, read, update (but not delete)
+        if (role === 'Sales') {
+            return ['create', 'read', 'update'].includes(operation);
+        }
+        
+        // User can only read and update
+        if (role === 'User') {
+            return ['read', 'update'].includes(operation);
+        }
+        
+        return false;
+    },
+    
+    canEditRecord(resource, record) {
+        if (!this.currentUser) return false;
+        
+        const role = this.currentUser.role;
+        
+        // Admin and Manager can edit anything
+        if (role === 'Admin' || role === 'Manager') return true;
+        
+        // Sales and User can only edit their own records
+        if (record && record.assignedUser === this.currentUser.id) return true;
+        
+        return false;
+    },
+    
+    canDeleteRecord(resource, record) {
+        if (!this.currentUser) return false;
+        
+        // Only Admin can delete
+        return this.currentUser.role === 'Admin';
+    },
+
     getUserDisplay() {
         if (!this.currentUser) return '';
         
@@ -955,3 +1009,4 @@ document.addEventListener('DOMContentLoaded', () => {
 console.log('✅ Enhanced Authentication & Theme Manager loaded');
 console.log('🎨 Theme options: Light, Dark, Auto');
 console.log('🔐 Demo credentials available in login page');
+console.log('✅ Permission validation methods added');
