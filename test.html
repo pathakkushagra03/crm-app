@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CRM Test</title>
+</head>
+<body>
+    <h1>Testing JavaScript Load</h1>
+    <div id="result"></div>
+
+    <!-- Test Config -->
+    <script>
+        window.AIRTABLE_CONFIG = {
+            TOKEN: "TEST_TOKEN",
+            BASE_ID: "TEST_BASE"
+        };
+        console.log("✅ Config loaded:", window.AIRTABLE_CONFIG);
+    </script>
+
+    <!-- Test Loading -->
+    <script>
+        const AirtableAPI = {
+            isConfigured: function() {
+                return window.AIRTABLE_CONFIG.TOKEN !== "TEST_TOKEN";
+            }
+        };
+        console.log("✅ AirtableAPI loaded:", typeof AirtableAPI);
+    </script>
+
+    <script>
+        const AppState = {
+            currentView: 'test',
+            data: {}
+        };
+        console.log("✅ AppState loaded:", typeof AppState);
+    </script>
+
+    <script>
+        document.getElementById('result').innerHTML = `
+            <p>✅ Config: ${typeof window.AIRTABLE_CONFIG}</p>
+            <p>✅ AirtableAPI: ${typeof AirtableAPI}</p>
+            <p>✅ AppState: ${typeof AppState}</p>
+        `;
+        console.log("✅ All tests passed!");
+    </script>
+</body>
+</html>
+```
+
+**Open `test.html` in browser and check if you see all green checkmarks.**
+
+---
+
+## **📸 WHAT I NEED FROM YOU**
+
+Please provide:
+
+1. **Screenshot of Network tab** (showing all JS files)
+2. **Screenshot of Console** (showing ALL red errors)
+3. **Output of the 4 diagnostic tests** (from Test A above)
+4. **Content of your js/config.js file** (first 5 lines)
+5. **Which browser and version** you're using
+
+---
+
+## **⚡ QUICK CHECKLIST**
+
+Before we continue, verify:
+```
+□ All JavaScript files exist in js/ folder
+□ js/config.js exists and has window.AIRTABLE_CONFIG
+□ index.html has all <script> tags in correct order
+□ Files are saved (not just open in editor)
+□ Browser cache cleared (hard refresh)
+□ No browser extensions blocking scripts
+□ Testing in Chrome/Firefox (not IE)

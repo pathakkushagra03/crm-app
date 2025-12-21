@@ -38,7 +38,7 @@ const ThemeManager = {
         if (theme === 'auto') {
             actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        
+        s
         if (actualTheme === 'light') {
             body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
             body.classList.add('theme-light');
