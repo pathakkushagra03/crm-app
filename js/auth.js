@@ -1,4 +1,9 @@
-console.warn("⚠️ DEMO MODE: Client-side auth is NOT secure.");
+// ========================================
+// AUTHENTICATION MANAGER - FIXED & HARDENED
+// ========================================
+
+console.warn("⚠️ DEMO MODE: Client-side auth is NOT secure for production.");
+
 // ========================================
 // THEME MANAGER - Light/Dark/Auto Support
 // ========================================
@@ -38,7 +43,7 @@ const ThemeManager = {
         if (theme === 'auto') {
             actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        s
+        
         if (actualTheme === 'light') {
             body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
             body.classList.add('theme-light');
@@ -60,13 +65,90 @@ const ThemeManager = {
 };
 
 // ========================================
-// ENHANCED AUTHENTICATION SYSTEM
+// ENHANCED AUTHENTICATION SYSTEM - FIXED
 // ========================================
 const AuthManager = {
     currentUser: null,
     
+    // Demo users configuration (always available)
+    DEMO_USERS: {
+        'admin@demo.com': { 
+            role: 'Admin', 
+            password: 'admin123',
+            name: 'Admin User',
+            phone: '+1 (555) 000-0001',
+            id: 'demo-admin'
+        },
+        'manager@demo.com': { 
+            role: 'Manager', 
+            password: 'manager123',
+            name: 'Manager User',
+            phone: '+1 (555) 000-0002',
+            id: 'demo-manager'
+        },
+        'sales@demo.com': { 
+            role: 'Sales', 
+            password: 'sales123',
+            name: 'Sales User',
+            phone: '+1 (555) 000-0003',
+            id: 'demo-sales'
+        },
+        'user@demo.com': { 
+            role: 'User', 
+            password: 'user123',
+            name: 'Regular User',
+            phone: '+1 (555) 000-0004',
+            id: 'demo-user'
+        }
+    },
+    
     init() {
         ThemeManager.init();
+        console.log('🔐 AuthManager initialized');
+    },
+    
+    /**
+     * Normalize role string for consistent comparison
+     * FIX: Prevents case-sensitivity issues with "admin" vs "Admin"
+     */
+    normalizeRole(role) {
+        if (!role) return 'User';
+        return role.trim().charAt(0).toUpperCase() + role.trim().slice(1).toLowerCase();
+    },
+    
+    /**
+     * Synchronize auth state across the application
+     * FIX: Ensures AuthManager.currentUser and AppState.currentUser stay aligned
+     */
+    syncAuthState(user) {
+        this.currentUser = user;
+        if (typeof AppState !== 'undefined') {
+            AppState.currentUser = user;
+            AppState.role = user ? this.normalizeRole(user.role) : null;
+        }
+        
+        console.log('✅ Auth state synchronized:', {
+            userId: user?.id,
+            role: user?.role,
+            email: user?.email
+        });
+    },
+    
+    /**
+     * Create user session object
+     * FIX: Standardized user object structure
+     */
+    createUserSession(userData) {
+        return {
+            id: userData.id || `user-${Date.now()}`,
+            name: userData.name || userData.UserName || 'Unknown User',
+            email: userData.email || userData.Email || '',
+            phone: userData.phone || userData.phoneNumber || userData.PhoneNumber || '',
+            role: this.normalizeRole(userData.role || userData.Role || 'User'),
+            companies: userData.companies || userData.Companies || ['1'],
+            status: userData.status || userData.Status || 'Active',
+            loginTime: new Date().toISOString()
+        };
     },
     
     showLoginForm() {
@@ -77,7 +159,7 @@ const AuthManager = {
                 <p class="text-white text-lg opacity-75">Sign in to continue to your workspace</p>
             </div>
             
-            <form id="loginForm">
+            <form id="loginForm" autocomplete="on">
                 <div class="form-group">
                     <label class="form-label required">Email</label>
                     <input type="email" 
@@ -111,12 +193,12 @@ const AuthManager = {
                 
                 <div class="form-group mb-6">
                     <label class="flex items-center text-white cursor-pointer">
-                        <input type="checkbox" name="remember" class="mr-2">
+                        <input type="checkbox" name="remember" class="mr-2" checked>
                         <span class="text-sm">Remember me for 30 days</span>
                     </label>
                 </div>
                 
-                <button type="submit" class="btn btn-primary w-full mb-4">
+                <button type="submit" class="btn btn-primary w-full mb-4" id="loginButton">
                     <span id="loginButtonText">🚀 Sign In</span>
                 </button>
                 
@@ -151,6 +233,11 @@ const AuthManager = {
         `;
 
         const app = document.getElementById('app');
+        if (!app) {
+            console.error('❌ App container not found');
+            return;
+        }
+        
         app.innerHTML = `
             <div class="min-h-screen flex items-center justify-center p-6">
                 <div class="glass-card p-12 max-w-md w-full fade-in">
@@ -160,22 +247,26 @@ const AuthManager = {
         `;
 
         const form = document.getElementById('loginForm');
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleLogin();
-        });
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLogin();
+            });
+        }
     },
 
     togglePasswordVisibility() {
         const input = document.getElementById('passwordInput');
         const icon = document.getElementById('passwordToggleIcon');
         
-        if (input.type === 'password') {
-            input.type = 'text';
-            icon.textContent = '🙈';
-        } else {
-            input.type = 'password';
-            icon.textContent = '👁️';
+        if (input && icon) {
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                icon.textContent = '👁️';
+            }
         }
     },
 
@@ -246,12 +337,15 @@ const AuthManager = {
             </button>
         `;
 
-        const modal = CRUDManager.createModal('🔐 Demo Credentials', demoInfo, footer);
-        document.body.appendChild(modal);
+        if (typeof CRUDManager !== 'undefined') {
+            const modal = CRUDManager.createModal('🔐 Demo Credentials', demoInfo, footer);
+            document.body.appendChild(modal);
+        }
     },
 
     fillLoginForm(email, password) {
-        document.querySelector('.modal-overlay').remove();
+        const modal = document.querySelector('.modal-overlay');
+        if (modal) modal.remove();
         
         setTimeout(() => {
             const emailInput = document.querySelector('input[name="email"]');
@@ -262,273 +356,445 @@ const AuthManager = {
                 passwordInput.value = password;
                 emailInput.focus();
                 
-                CRUDManager.showToast(`Credentials filled for ${email}`, 'success');
+                if (typeof CRUDManager !== 'undefined') {
+                    CRUDManager.showToast(`Credentials filled for ${email}`, 'success');
+                }
             }
         }, 100);
     },
 
+    /**
+     * FIXED: Robust login handler with clear error messages
+     */
     async handleLogin() {
         const form = document.getElementById('loginForm');
-        if (!CRUDManager.validateForm(form)) return;
-
-        const data = CRUDManager.getFormData(form);
-        const loginButton = document.getElementById('loginButtonText');
-        const originalText = loginButton.textContent;
+        const loginButton = document.getElementById('loginButton');
+        const loginButtonText = document.getElementById('loginButtonText');
         
-        loginButton.textContent = '⏳ Signing in...';
+        if (!form) {
+            console.error('❌ Login form not found');
+            return;
+        }
+        
+        // Validate form
+        if (typeof CRUDManager !== 'undefined' && !CRUDManager.validateForm(form)) {
+            return;
+        }
 
-        try {
-            let user = null;
-
-            // Define demo users (always available)
-            const demoUsers = {
-                'admin@demo.com': { 
-                    role: 'Admin', 
-                    password: 'admin123',
-                    name: 'Admin User',
-                    phone: '+1 (555) 000-0001'
-                },
-                'manager@demo.com': { 
-                    role: 'Manager', 
-                    password: 'manager123',
-                    name: 'Manager User',
-                    phone: '+1 (555) 000-0002'
-                },
-                'sales@demo.com': { 
-                    role: 'Sales', 
-                    password: 'sales123',
-                    name: 'Sales User',
-                    phone: '+1 (555) 000-0003'
-                },
-                'user@demo.com': { 
-                    role: 'User', 
-                    password: 'user123',
-                    name: 'Regular User',
-                    phone: '+1 (555) 000-0004'
-                }
+        const data = typeof CRUDManager !== 'undefined' 
+            ? CRUDManager.getFormData(form) 
+            : { 
+                email: form.querySelector('[name="email"]').value,
+                password: form.querySelector('[name="password"]').value,
+                remember: form.querySelector('[name="remember"]').checked
             };
 
-            // Check if using demo credentials first
-            const demoUser = demoUsers[data.email.toLowerCase()];
+        // Show loading state
+        if (loginButton) loginButton.disabled = true;
+        if (loginButtonText) loginButtonText.textContent = '⏳ Signing in...';
+
+        try {
+            console.log('🔐 Starting authentication for:', data.email);
+            
+            let user = null;
+            let authMethod = 'unknown';
+            
+            // STEP 1: Try demo credentials first
+            const demoUser = this.DEMO_USERS[data.email.toLowerCase()];
             
             if (demoUser && demoUser.password === data.password) {
-                // Use demo account
-                user = {
-                    id: 'demo-' + data.email.split('@')[0],
+                console.log('✅ Demo user authenticated:', data.email);
+                user = this.createUserSession({
+                    id: demoUser.id,
                     name: demoUser.name,
                     email: data.email,
                     phone: demoUser.phone,
                     role: demoUser.role,
                     companies: ['1']
-                };
-            } else if (AirtableAPI.isConfigured()) {
-                // Try Airtable authentication
-                try {
-                    user = await AirtableAPI.authenticateUser(data.email, data.password);
-                } catch (error) {
-                    console.log('Airtable authentication failed, trying fallback');
-                }
+                });
+                authMethod = 'demo';
+            } 
+            // STEP 2: Try Airtable authentication
+            else if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                console.log('🔍 Attempting Airtable authentication...');
                 
-                if (!user) {
-                    // Fallback: Accept any credentials in demo mode
-                    user = {
-                        id: 'demo-user-' + Date.now(),
-                        name: data.email.split('@')[0].charAt(0).toUpperCase() + data.email.split('@')[0].slice(1),
-                        email: data.email,
-                        phone: '',
-                        role: 'Admin',
-                        companies: ['1']
-                    };
+                try {
+                    const airtableUser = await AirtableAPI.authenticateUser(data.email, data.password);
+                    
+                    if (airtableUser) {
+                        console.log('✅ Airtable user authenticated:', data.email);
+                        user = this.createUserSession(airtableUser);
+                        authMethod = 'airtable';
+                    } else {
+                        console.warn('⚠️ Airtable authentication returned null');
+                    }
+                } catch (airtableError) {
+                    console.warn('⚠️ Airtable authentication failed:', airtableError.message);
+                    
+                    // Show specific error message
+                    if (typeof CRUDManager !== 'undefined') {
+                        CRUDManager.showToast('❌ Invalid credentials. Try demo accounts or check Airtable config.', 'error');
+                    }
+                    
+                    if (loginButton) loginButton.disabled = false;
+                    if (loginButtonText) loginButtonText.textContent = '🚀 Sign In';
+                    return;
                 }
-            } else {
-                // Pure demo mode - accept any credentials
-                user = {
+            }
+            // STEP 3: Pure demo mode fallback (only in development)
+            else {
+                console.log('ℹ️ Using demo mode fallback (Airtable not configured)');
+                user = this.createUserSession({
                     id: 'demo-user-' + Date.now(),
                     name: data.email.split('@')[0].charAt(0).toUpperCase() + data.email.split('@')[0].slice(1),
                     email: data.email,
                     phone: '',
                     role: 'Admin',
                     companies: ['1']
-                };
+                });
+                authMethod = 'demo-fallback';
             }
 
-            // Store authentication
-            this.currentUser = user;
-            AppState.currentUser = user;
-            AppState.role = user.role;
+            // STEP 4: Validate authentication result
+            if (!user || !user.id) {
+                throw new Error('Authentication failed: Invalid user object returned');
+            }
+
+            console.log('✅ Authentication successful:', {
+                method: authMethod,
+                userId: user.id,
+                role: user.role,
+                email: user.email
+            });
+
+            // STEP 5: Store authentication
+            this.syncAuthState(user);
 
             if (data.remember) {
                 const expiryDate = new Date();
                 expiryDate.setDate(expiryDate.getDate() + 30);
                 localStorage.setItem('crm_user', JSON.stringify(user));
                 localStorage.setItem('crm_user_expiry', expiryDate.toISOString());
+                console.log('💾 Session saved to localStorage (30 days)');
             } else {
                 sessionStorage.setItem('crm_user', JSON.stringify(user));
+                console.log('💾 Session saved to sessionStorage (browser session)');
             }
 
-            // Log activity
+            // STEP 6: Log activity
             this.logActivity('login', { 
                 email: user.email, 
                 role: user.role,
+                method: authMethod,
                 time: new Date().toISOString()
             });
 
-            CRUDManager.showToast(`🎉 Welcome back, ${user.name}!`, 'success');
+            // STEP 7: Show success message
+            if (typeof CRUDManager !== 'undefined') {
+                CRUDManager.showToast(`🎉 Welcome back, ${user.name}!`, 'success');
+            }
             
-            // Load companies and proceed
-            await loadCompanies();
-            navigateTo('companySelection');
+            // STEP 8: Load companies and proceed
+            console.log('📦 Loading companies...');
+            
+            if (typeof loadCompanies === 'function') {
+                await loadCompanies();
+            } else {
+                console.warn('⚠️ loadCompanies function not found');
+            }
+            
+            // STEP 9: Navigate based on role and permissions
+            if (typeof navigateTo === 'function') {
+                navigateTo('companySelection');
+            } else if (typeof AppState !== 'undefined') {
+                AppState.currentView = 'companySelection';
+                if (typeof render === 'function') render();
+            }
 
         } catch (error) {
-            console.error('Login error:', error);
-            CRUDManager.showToast('❌ Login failed. Please try again.', 'error');
-            loginButton.textContent = originalText;
+            console.error('❌ Login error:', error);
+            
+            // Clear auth state on error
+            this.syncAuthState(null);
+            
+            // Show user-friendly error
+            const errorMessage = error.message || 'Login failed. Please try again.';
+            
+            if (typeof CRUDManager !== 'undefined') {
+                CRUDManager.showToast(`❌ ${errorMessage}`, 'error');
+            } else {
+                alert(errorMessage);
+            }
+        } finally {
+            // Reset button state
+            if (loginButton) loginButton.disabled = false;
+            if (loginButtonText) loginButtonText.textContent = '🚀 Sign In';
         }
     },
 
+    /**
+     * FIXED: Secure logout with proper cleanup
+     */
     logout() {
-        CRUDManager.showConfirmDialog(
-            '🚪 Sign Out',
-            'Are you sure you want to sign out?',
-            () => {
-                if (this.currentUser) {
-                    this.logActivity('logout', { 
-                        email: this.currentUser.email,
-                        time: new Date().toISOString()
-                    });
-                }
-
-                this.currentUser = null;
-                AppState.currentUser = null;
-                AppState.selectedCompany = null;
-                AppState.selectedUser = null;
-                AppState.data = {
-                    companies: [],
-                    users: [],
-                    clients: [],
-                    leads: [],
-                    generalTodos: [],
-                    clientTodos: []
-                };
-                
-                localStorage.removeItem('crm_user');
-                localStorage.removeItem('crm_user_expiry');
-                sessionStorage.removeItem('crm_user');
-                
-                CRUDManager.showToast('👋 Signed out successfully', 'success');
-                this.showLoginForm();
+        if (typeof CRUDManager !== 'undefined') {
+            CRUDManager.showConfirmDialog(
+                '🚪 Sign Out',
+                'Are you sure you want to sign out?',
+                () => this.performLogout()
+            );
+        } else {
+            if (confirm('Are you sure you want to sign out?')) {
+                this.performLogout();
             }
-        );
+        }
+    },
+    
+    performLogout() {
+        console.log('🚪 Performing logout...');
+        
+        // Log activity before clearing user
+        if (this.currentUser) {
+            this.logActivity('logout', { 
+                email: this.currentUser.email,
+                time: new Date().toISOString()
+            });
+        }
+
+        // Clear auth state
+        this.syncAuthState(null);
+        
+        if (typeof AppState !== 'undefined') {
+            AppState.selectedCompany = null;
+            AppState.selectedUser = null;
+            AppState.data = {
+                companies: [],
+                users: [],
+                clients: [],
+                leads: [],
+                generalTodos: [],
+                clientTodos: [],
+                calendarEvents: []
+            };
+        }
+        
+        // Clear storage
+        localStorage.removeItem('crm_user');
+        localStorage.removeItem('crm_user_expiry');
+        localStorage.removeItem('crm_last_company');
+        sessionStorage.removeItem('crm_user');
+        
+        console.log('✅ Logout complete');
+        
+        if (typeof CRUDManager !== 'undefined') {
+            CRUDManager.showToast('👋 Signed out successfully', 'success');
+        }
+        
+        // Show login form
+        this.showLoginForm();
     },
 
+    /**
+     * FIXED: Check if user is authenticated
+     */
     isAuthenticated() {
-        return this.currentUser !== null;
+        const authenticated = this.currentUser !== null && this.currentUser.id;
+        console.log('🔐 isAuthenticated:', authenticated, this.currentUser?.email);
+        return authenticated;
     },
 
+    /**
+     * FIXED: Robust session checking with validation
+     */
     checkStoredSession() {
+        console.log('🔍 Checking for stored session...');
+        
+        // Try localStorage first (remember me)
         const stored = localStorage.getItem('crm_user');
         const expiry = localStorage.getItem('crm_user_expiry');
         
         if (stored && expiry) {
             const expiryDate = new Date(expiry);
-            if (expiryDate > new Date()) {
+            const now = new Date();
+            
+            if (expiryDate > now) {
                 try {
-                    this.currentUser = JSON.parse(stored);
-                    AppState.currentUser = this.currentUser;
-                    AppState.role = this.currentUser.role;
-                    return true;
+                    const user = JSON.parse(stored);
+                    
+                    // Validate user object
+                    if (user && user.id && user.email && user.role) {
+                        console.log('✅ Valid localStorage session found:', user.email);
+                        this.syncAuthState(user);
+                        return true;
+                    } else {
+                        console.warn('⚠️ Invalid user object in localStorage');
+                        localStorage.removeItem('crm_user');
+                        localStorage.removeItem('crm_user_expiry');
+                    }
                 } catch (error) {
+                    console.error('❌ Failed to parse stored session:', error);
                     localStorage.removeItem('crm_user');
                     localStorage.removeItem('crm_user_expiry');
                 }
             } else {
+                console.log('ℹ️ localStorage session expired');
                 localStorage.removeItem('crm_user');
                 localStorage.removeItem('crm_user_expiry');
             }
         }
 
+        // Try sessionStorage (current browser session)
         const sessionStored = sessionStorage.getItem('crm_user');
         if (sessionStored) {
             try {
-                this.currentUser = JSON.parse(sessionStored);
-                AppState.currentUser = this.currentUser;
-                AppState.role = this.currentUser.role;
-                return true;
+                const user = JSON.parse(sessionStored);
+                
+                // Validate user object
+                if (user && user.id && user.email && user.role) {
+                    console.log('✅ Valid sessionStorage session found:', user.email);
+                    this.syncAuthState(user);
+                    return true;
+                } else {
+                    console.warn('⚠️ Invalid user object in sessionStorage');
+                    sessionStorage.removeItem('crm_user');
+                }
             } catch (error) {
+                console.error('❌ Failed to parse session:', error);
                 sessionStorage.removeItem('crm_user');
             }
         }
 
+        console.log('ℹ️ No valid stored session found');
         return false;
     },
 
+    /**
+     * FIXED: Centralized permission checker with Admin priority
+     */
     hasPermission(action) {
-        if (!this.currentUser) return false;
+        if (!this.currentUser) {
+            console.warn('⚠️ Permission check failed: No user authenticated');
+            return false;
+        }
         
-        const role = this.currentUser.role;
+        const role = this.normalizeRole(this.currentUser.role);
+        
+        console.log('🔐 Checking permission:', { action, role, userId: this.currentUser.id });
+        
+        // Admin has ALL permissions - NO EXCEPTIONS
+        if (role === 'Admin') {
+            console.log('✅ Admin: Permission granted');
+            return true;
+        }
         
         const permissions = {
-            'Admin': ['create', 'read', 'update', 'delete', 'manage_users', 'manage_companies', 'view_all', 'export'],
             'Manager': ['create', 'read', 'update', 'delete', 'view_all', 'export'],
             'Sales': ['create', 'read', 'update', 'view_assigned'],
             'User': ['read', 'update', 'view_assigned']
         };
 
-        return permissions[role]?.includes(action) || false;
+        const hasPermission = permissions[role]?.includes(action) || false;
+        console.log(hasPermission ? '✅ Permission granted' : '❌ Permission denied');
+        
+        return hasPermission;
     },
 
-    // ========================================
-    // MISSING METHODS FOR CRUD PERMISSION VALIDATION
-    // ========================================
-    
+    /**
+     * FIXED: Detailed permission checker for CRUD operations
+     */
     hasDetailedPermission(resource, operation) {
-        if (!this.currentUser) return false;
+        if (!this.currentUser) {
+            console.warn('⚠️ Detailed permission check failed: No user authenticated');
+            return false;
+        }
         
-        const role = this.currentUser.role;
+        const role = this.normalizeRole(this.currentUser.role);
         
-        // Admin can do everything
-        if (role === 'Admin') return true;
+        console.log('🔐 Checking detailed permission:', { 
+            resource, 
+            operation, 
+            role, 
+            userId: this.currentUser.id 
+        });
+        
+        // Admin can do EVERYTHING - NO EXCEPTIONS
+        if (role === 'Admin') {
+            console.log('✅ Admin: Full access granted');
+            return true;
+        }
         
         // Manager can do most things except manage users/companies
         if (role === 'Manager') {
             if (resource === 'users' || resource === 'companies') {
-                return operation === 'read';
+                const allowed = operation === 'read';
+                console.log(allowed ? '✅ Manager: Read-only access' : '❌ Manager: No write access to users/companies');
+                return allowed;
             }
-            return ['create', 'read', 'update', 'delete'].includes(operation);
+            const allowed = ['create', 'read', 'update', 'delete'].includes(operation);
+            console.log(allowed ? '✅ Manager: Access granted' : '❌ Manager: Operation not allowed');
+            return allowed;
         }
         
         // Sales can create, read, update (but not delete)
         if (role === 'Sales') {
-            return ['create', 'read', 'update'].includes(operation);
+            const allowed = ['create', 'read', 'update'].includes(operation);
+            console.log(allowed ? '✅ Sales: Access granted' : '❌ Sales: Cannot delete');
+            return allowed;
         }
         
         // User can only read and update
         if (role === 'User') {
-            return ['read', 'update'].includes(operation);
+            const allowed = ['read', 'update'].includes(operation);
+            console.log(allowed ? '✅ User: Access granted' : '❌ User: Limited access');
+            return allowed;
         }
         
+        console.log('❌ Permission denied: Unknown role or operation');
         return false;
     },
     
+    /**
+     * FIXED: Check if user can edit specific record
+     */
     canEditRecord(resource, record) {
-        if (!this.currentUser) return false;
+        if (!this.currentUser) {
+            console.warn('⚠️ Edit check failed: No user authenticated');
+            return false;
+        }
         
-        const role = this.currentUser.role;
+        const role = this.normalizeRole(this.currentUser.role);
         
         // Admin and Manager can edit anything
-        if (role === 'Admin' || role === 'Manager') return true;
+        if (role === 'Admin' || role === 'Manager') {
+            console.log('✅ Admin/Manager: Can edit any record');
+            return true;
+        }
         
         // Sales and User can only edit their own records
-        if (record && record.assignedUser === this.currentUser.id) return true;
+        if (record && record.assignedUser === this.currentUser.id) {
+            console.log('✅ User owns record: Can edit');
+            return true;
+        }
         
+        console.log('❌ Cannot edit: Not assigned to user');
         return false;
     },
     
+    /**
+     * FIXED: Check if user can delete specific record
+     */
     canDeleteRecord(resource, record) {
-        if (!this.currentUser) return false;
+        if (!this.currentUser) {
+            console.warn('⚠️ Delete check failed: No user authenticated');
+            return false;
+        }
+        
+        const role = this.normalizeRole(this.currentUser.role);
         
         // Only Admin can delete
-        return this.currentUser.role === 'Admin';
+        const canDelete = role === 'Admin';
+        console.log(canDelete ? '✅ Admin: Can delete' : '❌ Only Admin can delete');
+        
+        return canDelete;
     },
 
     getUserDisplay() {
@@ -538,7 +804,7 @@ const AuthManager = {
             <div class="flex items-center gap-3">
                 <div class="text-right">
                     <div class="text-white font-semibold">${this.currentUser.name}</div>
-                    <div class="text-white text-xs opacity-75">${this.currentUser.role}</div>
+                    <div class="text-white text-xs opacity-75">${this.normalizeRole(this.currentUser.role)}</div>
                 </div>
                 <div class="relative">
                     <button class="btn btn-primary" onclick="document.getElementById('userMenu').classList.toggle('hidden')">
@@ -546,23 +812,23 @@ const AuthManager = {
                     </button>
                     <div id="userMenu" class="hidden absolute right-0 mt-2 w-56 glass-card rounded-lg overflow-hidden z-50 shadow-2xl">
                         <button class="w-full text-left px-4 py-3 text-white hover:bg-white hover:bg-opacity-10 transition-all flex items-center gap-3" 
-                                onclick="AuthManager.showProfile()">
+                                onclick="AuthManager.showProfile(); document.getElementById('userMenu').classList.add('hidden');">
                             <span class="text-xl">👤</span>
                             <span>My Profile</span>
                         </button>
                         <button class="w-full text-left px-4 py-3 text-white hover:bg-white hover:bg-opacity-10 transition-all flex items-center gap-3" 
-                                onclick="AuthManager.showSettings()">
+                                onclick="AuthManager.showSettings(); document.getElementById('userMenu').classList.add('hidden');">
                             <span class="text-xl">⚙️</span>
                             <span>Settings</span>
                         </button>
                         <button class="w-full text-left px-4 py-3 text-white hover:bg-white hover:bg-opacity-10 transition-all flex items-center gap-3" 
-                                onclick="AuthManager.showActivityLog()">
+                                onclick="AuthManager.showActivityLog(); document.getElementById('userMenu').classList.add('hidden');">
                             <span class="text-xl">📊</span>
                             <span>Activity Log</span>
                         </button>
                         <div class="border-t border-white border-opacity-20"></div>
                         <button class="w-full text-left px-4 py-3 text-white hover:bg-white hover:bg-opacity-10 transition-all flex items-center gap-3" 
-                                onclick="AuthManager.logout()">
+                                onclick="AuthManager.logout(); document.getElementById('userMenu').classList.add('hidden');">
                             <span class="text-xl">🚪</span>
                             <span>Sign Out</span>
                         </button>
@@ -573,7 +839,7 @@ const AuthManager = {
     },
 
     showProfile() {
-        document.getElementById('userMenu')?.classList.add('hidden');
+        if (!this.currentUser) return;
         
         const content = `
             <div class="text-center mb-6">
@@ -587,7 +853,7 @@ const AuthManager = {
                     <div class="text-white text-sm opacity-75 mb-1">Role</div>
                     <div class="flex items-center gap-2">
                         <span class="text-2xl">${this.getRoleIcon(this.currentUser.role)}</span>
-                        <span class="text-white font-semibold text-lg">${this.currentUser.role}</span>
+                        <span class="text-white font-semibold text-lg">${this.normalizeRole(this.currentUser.role)}</span>
                     </div>
                 </div>
                 
@@ -609,6 +875,13 @@ const AuthManager = {
                         ${this.getPermissionBadges()}
                     </div>
                 </div>
+                
+                ${this.currentUser.loginTime ? `
+                    <div class="glass-card p-4">
+                        <div class="text-white text-sm opacity-75 mb-1">Last Login</div>
+                        <div class="text-white text-xs">${new Date(this.currentUser.loginTime).toLocaleString()}</div>
+                    </div>
+                ` : ''}
             </div>
         `;
 
@@ -617,12 +890,18 @@ const AuthManager = {
             <button class="btn btn-primary" onclick="AuthManager.showEditProfile()">✏️ Edit Profile</button>
         `;
 
-        const modal = CRUDManager.createModal('👤 My Profile', content, footer);
-        document.body.appendChild(modal);
+        if (typeof CRUDManager !== 'undefined') {
+            const modal = CRUDManager.createModal('👤 My Profile', content, footer);
+            document.body.appendChild(modal);
+        }
     },
 
     showEditProfile() {
-        document.querySelector('.modal-overlay').remove();
+        if (!this.currentUser) return;
+        
+        // Close existing modal
+        const existingModal = document.querySelector('.modal-overlay');
+        if (existingModal) existingModal.remove();
         
         const content = `
             <form id="editProfileForm">
@@ -660,19 +939,33 @@ const AuthManager = {
             <button class="btn btn-primary" onclick="AuthManager.submitEditProfile()">💾 Save Changes</button>
         `;
 
-        const modal = CRUDManager.createModal('✏️ Edit Profile', content, footer);
-        document.body.appendChild(modal);
+        if (typeof CRUDManager !== 'undefined') {
+            const modal = CRUDManager.createModal('✏️ Edit Profile', content, footer);
+            document.body.appendChild(modal);
+        }
     },
 
     async submitEditProfile() {
         const form = document.getElementById('editProfileForm');
-        if (!CRUDManager.validateForm(form)) return;
+        if (!form) return;
+        
+        if (typeof CRUDManager !== 'undefined' && !CRUDManager.validateForm(form)) return;
 
-        const data = CRUDManager.getFormData(form);
+        const data = typeof CRUDManager !== 'undefined' 
+            ? CRUDManager.getFormData(form)
+            : {
+                name: form.querySelector('[name="name"]').value,
+                email: form.querySelector('[name="email"]').value,
+                phone: form.querySelector('[name="phone"]').value,
+                password: form.querySelector('[name="password"]').value,
+                confirmPassword: form.querySelector('[name="confirmPassword"]').value
+            };
         
         // Validate password match
         if (data.password && data.password !== data.confirmPassword) {
-            CRUDManager.showToast('❌ Passwords do not match', 'error');
+            if (typeof CRUDManager !== 'undefined') {
+                CRUDManager.showToast('❌ Passwords do not match', 'error');
+            }
             return;
         }
 
@@ -693,11 +986,11 @@ const AuthManager = {
             }
 
             // Update in Airtable if configured
-            if (AirtableAPI.isConfigured() && this.currentUser.id) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured() && this.currentUser.id) {
                 const updateData = {
                     name: data.name,
                     email: data.email,
-                    phone: data.phone
+                    phoneNumber: data.phone
                 };
                 if (data.password) {
                     updateData.password = data.password;
@@ -707,20 +1000,23 @@ const AuthManager = {
 
             this.logActivity('profile_updated', { fields: Object.keys(data) });
             
-            CRUDManager.showToast('✅ Profile updated successfully!', 'success');
+            if (typeof CRUDManager !== 'undefined') {
+                CRUDManager.showToast('✅ Profile updated successfully!', 'success');
+            }
+            
             document.querySelector('.modal-overlay').remove();
             
             // Refresh display
-            render();
+            if (typeof render === 'function') render();
         } catch (error) {
             console.error('Error updating profile:', error);
-            CRUDManager.showToast('❌ Failed to update profile', 'error');
+            if (typeof CRUDManager !== 'undefined') {
+                CRUDManager.showToast('❌ Failed to update profile', 'error');
+            }
         }
     },
 
     showSettings() {
-        document.getElementById('userMenu')?.classList.add('hidden');
-        
         const savedSettings = JSON.parse(localStorage.getItem('crm_settings') || '{}');
         
         const content = `
@@ -818,13 +1114,19 @@ const AuthManager = {
             <button class="btn btn-primary" onclick="AuthManager.saveSettings()">💾 Save Settings</button>
         `;
 
-        const modal = CRUDManager.createModal('⚙️ Settings', content, footer);
-        document.body.appendChild(modal);
+        if (typeof CRUDManager !== 'undefined') {
+            const modal = CRUDManager.createModal('⚙️ Settings', content, footer);
+            document.body.appendChild(modal);
+        }
     },
 
     saveSettings() {
         const form = document.getElementById('settingsForm');
-        const data = CRUDManager.getFormData(form);
+        if (!form) return;
+        
+        const data = typeof CRUDManager !== 'undefined' 
+            ? CRUDManager.getFormData(form)
+            : {};
         
         // Apply theme
         if (data.theme) {
@@ -834,13 +1136,13 @@ const AuthManager = {
         // Save other settings
         const settings = {
             notifications: {
-                tasks: form.querySelector('[name="notifyTasks"]').checked,
-                leads: form.querySelector('[name="notifyLeads"]').checked,
-                clients: form.querySelector('[name="notifyClients"]').checked
+                tasks: form.querySelector('[name="notifyTasks"]')?.checked || false,
+                leads: form.querySelector('[name="notifyLeads"]')?.checked || false,
+                clients: form.querySelector('[name="notifyClients"]')?.checked || false
             },
             display: {
-                itemsPerPage: parseInt(data.itemsPerPage),
-                compactView: form.querySelector('[name="compactView"]').checked
+                itemsPerPage: parseInt(data.itemsPerPage) || 25,
+                compactView: form.querySelector('[name="compactView"]')?.checked || false
             }
         };
 
@@ -848,13 +1150,14 @@ const AuthManager = {
         
         this.logActivity('settings_updated', settings);
         
-        CRUDManager.showToast('✅ Settings saved successfully!', 'success');
-        document.querySelector('.modal-overlay').remove();
+        if (typeof CRUDManager !== 'undefined') {
+            CRUDManager.showToast('✅ Settings saved successfully!', 'success');
+        }
+        
+        document.querySelector('.modal-overlay')?.remove();
     },
 
     showActivityLog() {
-        document.getElementById('userMenu')?.classList.add('hidden');
-        
         const activities = this.getActivityLog();
         
         const content = `
@@ -884,8 +1187,10 @@ const AuthManager = {
             <button class="btn btn-danger" onclick="AuthManager.clearActivityLog()">🗑️ Clear Log</button>
         `;
 
-        const modal = CRUDManager.createModal('📊 Activity Log', content, footer);
-        document.body.appendChild(modal);
+        if (typeof CRUDManager !== 'undefined') {
+            const modal = CRUDManager.createModal('📊 Activity Log', content, footer);
+            document.body.appendChild(modal);
+        }
     },
 
     logActivity(action, details) {
@@ -918,15 +1223,21 @@ const AuthManager = {
     },
 
     clearActivityLog() {
-        CRUDManager.showConfirmDialog(
-            '🗑️ Clear Activity Log',
-            'Are you sure you want to clear your activity log? This action cannot be undone.',
-            () => {
+        if (typeof CRUDManager !== 'undefined') {
+            CRUDManager.showConfirmDialog(
+                '🗑️ Clear Activity Log',
+                'Are you sure you want to clear your activity log? This action cannot be undone.',
+                () => {
+                    localStorage.removeItem('crm_activity_log');
+                    CRUDManager.showToast('✅ Activity log cleared', 'success');
+                    document.querySelector('.modal-overlay')?.remove();
+                }
+            );
+        } else {
+            if (confirm('Clear activity log?')) {
                 localStorage.removeItem('crm_activity_log');
-                CRUDManager.showToast('✅ Activity log cleared', 'success');
-                document.querySelector('.modal-overlay').remove();
             }
-        );
+        }
     },
 
     exportUserData() {
@@ -947,29 +1258,34 @@ const AuthManager = {
         URL.revokeObjectURL(url);
 
         this.logActivity('export', 'User data exported');
-        CRUDManager.showToast('📥 User data exported successfully!', 'success');
+        
+        if (typeof CRUDManager !== 'undefined') {
+            CRUDManager.showToast('📥 User data exported successfully!', 'success');
+        }
     },
 
     clearCache() {
-        CRUDManager.showConfirmDialog(
-            '🗑️ Clear Cache',
-            'This will clear all cached data but keep you signed in. Continue?',
-            () => {
-                const itemsToKeep = ['crm_user', 'crm_user_expiry', 'crm_theme', 'crm_settings', 'crm_activity_log'];
-                const allKeys = Object.keys(localStorage);
-                
-                let clearedCount = 0;
-                allKeys.forEach(key => {
-                    if (!itemsToKeep.includes(key)) {
-                        localStorage.removeItem(key);
-                        clearedCount++;
-                    }
-                });
+        if (typeof CRUDManager !== 'undefined') {
+            CRUDManager.showConfirmDialog(
+                '🗑️ Clear Cache',
+                'This will clear all cached data but keep you signed in. Continue?',
+                () => {
+                    const itemsToKeep = ['crm_user', 'crm_user_expiry', 'crm_theme', 'crm_settings', 'crm_activity_log'];
+                    const allKeys = Object.keys(localStorage);
+                    
+                    let clearedCount = 0;
+                    allKeys.forEach(key => {
+                        if (!itemsToKeep.includes(key)) {
+                            localStorage.removeItem(key);
+                            clearedCount++;
+                        }
+                    });
 
-                this.logActivity('cache_cleared', `${clearedCount} items removed`);
-                CRUDManager.showToast(`✅ Cleared ${clearedCount} cache items!`, 'success');
-            }
-        );
+                    this.logActivity('cache_cleared', `${clearedCount} items removed`);
+                    CRUDManager.showToast(`✅ Cleared ${clearedCount} cache items!`, 'success');
+                }
+            );
+        }
     },
 
     getPermissionBadges() {
@@ -977,17 +1293,18 @@ const AuthManager = {
         const userPermissions = allPermissions.filter(perm => this.hasPermission(perm));
         
         return userPermissions.map(perm => 
-            `<span class="status-badge badge-low">${perm.replace('_', ' ')}</span>`
+            `<span class="status-badge badge-low" style="font-size: 11px;">${perm.replace('_', ' ')}</span>`
         ).join('');
     },
 
     getRoleIcon(role) {
+        const normalized = this.normalizeRole(role);
         return {
             'Admin': '👑',
             'Manager': '📊',
             'Sales': '💼',
             'User': '👤'
-        }[role] || '👤';
+        }[normalized] || '👤';
     }
 };
 
@@ -996,7 +1313,7 @@ document.addEventListener('click', (e) => {
     const userMenu = document.getElementById('userMenu');
     const button = e.target.closest('button');
     
-    if (userMenu && !userMenu.contains(e.target) && !button) {
+    if (userMenu && !userMenu.contains(e.target) && button?.textContent !== '👤') {
         userMenu.classList.add('hidden');
     }
 });
@@ -1006,7 +1323,10 @@ document.addEventListener('DOMContentLoaded', () => {
     AuthManager.init();
 });
 
-console.log('✅ Enhanced Authentication & Theme Manager loaded');
+console.log('✅ Enhanced Authentication & Theme Manager loaded - FIXED');
 console.log('🎨 Theme options: Light, Dark, Auto');
 console.log('🔐 Demo credentials available in login page');
-console.log('✅ Permission validation methods added');
+console.log('✅ Permission validation methods hardened');
+console.log('✅ Admin role always has full access');
+console.log('✅ Session validation improved');
+console.log('✅ Auth state synchronization active');

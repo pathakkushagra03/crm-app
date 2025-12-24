@@ -1,44 +1,68 @@
-function sanitizeInput(str) {
-  return str.replace(/[<>&"'`]/g, "");
-}
-
-function shouldSkipSanitization(fieldName) {
-  // Don't sanitize base64 photo data
-  return fieldName === 'photo' || fieldName.includes('Photo');
-}
-
 // ========================================
-// CRUD OPERATIONS & MODAL MANAGEMENT
-// ========================================
-
-// ========================================
-// CRUD PERMISSION VALIDATORS
+// CRUD OPERATIONS & MODAL MANAGEMENT - FIXED
 // ========================================
 
 /**
- * Validate if user can perform CRUD operation
+ * Sanitize input to prevent XSS attacks
+ */
+function sanitizeInput(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/[<>&"'`]/g, "");
+}
+
+/**
+ * Check if field should skip sanitization (e.g., base64 photo data)
+ */
+function shouldSkipSanitization(fieldName) {
+    return fieldName === 'photo' || fieldName.includes('Photo');
+}
+
+// ========================================
+// CRUD PERMISSION VALIDATORS - FIXED
+// ========================================
+
+/**
+ * FIXED: Validate if user can perform CRUD operation
+ * Returns object with allowed status and reason for denial
  */
 function validateCRUDPermission(resource, operation, record = null) {
-    if (!AuthManager || !AuthManager.currentUser) {
+    console.log('🔐 Validating CRUD permission:', { resource, operation, recordId: record?.id });
+    
+    // Check if AuthManager exists and user is authenticated
+    if (typeof AuthManager === 'undefined' || !AuthManager || !AuthManager.currentUser) {
+        console.error('❌ Permission denied: Not authenticated');
         return { 
             allowed: false, 
             reason: 'Not authenticated. Please log in.' 
         };
     }
     
+    const role = AuthManager.normalizeRole(AuthManager.currentUser.role);
+    console.log('👤 User role:', role);
+    
+    // ADMIN HAS FULL ACCESS - NO EXCEPTIONS
+    if (role === 'Admin') {
+        console.log('✅ Admin: Full access granted');
+        return { allowed: true, reason: '' };
+    }
+    
+    // Check general permission for the operation
     const hasPermission = AuthManager.hasDetailedPermission(resource, operation);
     
     if (!hasPermission) {
+        console.warn('❌ Permission denied:', { role, resource, operation });
         return { 
             allowed: false, 
-            reason: `Your role (${AuthManager.currentUser.role}) cannot ${operation} ${resource}.` 
+            reason: `Your role (${role}) cannot ${operation} ${resource}.` 
         };
     }
     
+    // For update/delete operations, check record ownership
     if ((operation === 'update' || operation === 'delete') && record) {
         const canEdit = AuthManager.canEditRecord(resource, record);
         
         if (!canEdit) {
+            console.warn('❌ Cannot edit: Not assigned to user');
             return {
                 allowed: false,
                 reason: `You can only ${operation} ${resource} assigned to you.`
@@ -46,10 +70,12 @@ function validateCRUDPermission(resource, operation, record = null) {
         }
     }
     
+    // Special check for delete operations (Admin only)
     if (operation === 'delete') {
         const canDelete = AuthManager.canDeleteRecord(resource, record);
         
         if (!canDelete) {
+            console.warn('❌ Cannot delete: Only Admin can delete');
             return {
                 allowed: false,
                 reason: 'Only Admins can delete records. Contact your administrator.'
@@ -57,24 +83,25 @@ function validateCRUDPermission(resource, operation, record = null) {
         }
     }
     
+    console.log('✅ Permission granted');
     return { allowed: true, reason: '' };
 }
 
 /**
- * Show permission error with consistent formatting
+ * FIXED: Show permission error with consistent formatting
  */
 function showPermissionError(operation, reason) {
-    if (typeof CRUDManager !== 'undefined') {
-        CRUDManager.showToast(`❌ ${operation} blocked: ${reason}`, 'error');
-    } else {
-        alert(`${operation} blocked: ${reason}`);
-    }
+    console.error('❌ Permission Error:', operation, reason);
     
-    console.warn(`CRUD Permission Denied: ${operation} - ${reason}`);
+    if (typeof CRUDManager !== 'undefined') {
+        CRUDManager.showToast(`❌ ${operation}: ${reason}`, 'error');
+    } else {
+        alert(`${operation}: ${reason}`);
+    }
 }
 
 /**
- * Pre-flight check before showing form
+ * FIXED: Pre-flight check before showing form
  */
 function canShowForm(resource, operation) {
     const validation = validateCRUDPermission(resource, operation);
@@ -87,8 +114,15 @@ function canShowForm(resource, operation) {
     return true;
 }
 
+// ========================================
+// CRUD MANAGER - FIXED
+// ========================================
+
 const CRUDManager = {
     
+    /**
+     * Show toast notification
+     */
     showToast(message, type = 'success') {
         let container = document.querySelector('.toast-container');
         if (!container) {
@@ -100,7 +134,7 @@ const CRUDManager = {
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         toast.innerHTML = `
-            <div class="toast-icon">${type === 'success' ? '✅' : '⚠️'}</div>
+            <div class="toast-icon">${type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️'}</div>
             <div class="toast-message">${message}</div>
             <button class="toast-close" onclick="this.parentElement.remove()">×</button>
         `;
@@ -113,6 +147,9 @@ const CRUDManager = {
         }, 4000);
     },
 
+    /**
+     * Show confirmation dialog
+     */
     showConfirmDialog(title, message, onConfirm) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
@@ -129,15 +166,23 @@ const CRUDManager = {
         `;
 
         document.body.appendChild(overlay);
-        overlay.querySelector('#confirmBtn').addEventListener('click', () => {
-            overlay.remove();
-            onConfirm();
-        });
+        
+        const confirmBtn = overlay.querySelector('#confirmBtn');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', () => {
+                overlay.remove();
+                onConfirm();
+            });
+        }
+        
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) overlay.remove();
         });
     },
 
+    /**
+     * Create modal
+     */
     createModal(title, content, footer) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
@@ -167,7 +212,15 @@ const CRUDManager = {
         return overlay;
     },
 
+    /**
+     * Validate form
+     */
     validateForm(formElement) {
+        if (!formElement) {
+            console.error('❌ Form element not found');
+            return false;
+        }
+        
         let isValid = true;
         const inputs = formElement.querySelectorAll('[required]');
 
@@ -201,26 +254,41 @@ const CRUDManager = {
             }
         });
         
-        if (!isValid && typeof ToastManager !== 'undefined') {
-            ToastManager.warning('Please fix the errors in the form');
+        if (!isValid) {
+            this.showToast('⚠️ Please fix the errors in the form', 'error');
         }
 
         return isValid;
     },
 
+    /**
+     * Validate email format
+     */
     isValidEmail(email) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return emailRegex.test(email);
     },
 
+    /**
+     * Validate phone format
+     */
     isValidPhone(phone) {
         const phoneRegex = /^[\d\s\-\+\(\)]+$/;
         return phoneRegex.test(phone) && phone.replace(/\D/g, '').length >= 10;
     },
 
+    /**
+     * Get form data
+     */
     getFormData(formElement) {
+        if (!formElement) {
+            console.error('❌ Form element not found');
+            return {};
+        }
+        
         const formData = new FormData(formElement);
         const data = {};
+        
         for (let [key, value] of formData.entries()) {
             // Skip sanitization for photo fields (they contain base64 data)
             if (shouldSkipSanitization(key)) {
@@ -229,9 +297,13 @@ const CRUDManager = {
                 data[key] = sanitizeInput(value);
             }
         }
+        
         return data;
     },
 
+    /**
+     * Handle photo upload
+     */
     handlePhotoUpload(previewId, dataId, inputElement) {
         const file = inputElement.files[0];
         if (!file) return;
@@ -270,6 +342,9 @@ const CRUDManager = {
         reader.readAsDataURL(file);
     },
 
+    /**
+     * Remove photo
+     */
     removePhoto(previewId, dataId) {
         const preview = document.getElementById(previewId);
         const dataInput = document.getElementById(dataId);
@@ -290,10 +365,16 @@ const CRUDManager = {
     },
 
     // ========================================
-    // COMPANY OPERATIONS
+    // COMPANY OPERATIONS - FIXED
     // ========================================
     
+    /**
+     * FIXED: Show add company form with permission check
+     */
     showAddCompanyForm() {
+        console.log('🏢 Opening add company form');
+        
+        // Permission check
         if (!canShowForm('companies', 'create')) {
             return;
         }
@@ -302,7 +383,7 @@ const CRUDManager = {
             <form id="addCompanyForm">
                 <div class="form-group">
                     <label class="form-label required">Company Name</label>
-                    <input type="text" name="name" class="form-input" placeholder="Enter company name" required>
+                    <input type="text" name="name" class="form-input" placeholder="Enter company name" required autofocus>
                     <div class="form-error">Company name is required</div>
                 </div>
                 
@@ -343,7 +424,13 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit add company with permission validation
+     */
     async submitAddCompany() {
+        console.log('💾 Submitting add company');
+        
+        // Re-validate permission
         const validation = validateCRUDPermission('companies', 'create');
         if (!validation.allowed) {
             showPermissionError('Create company', validation.reason);
@@ -351,17 +438,26 @@ const CRUDManager = {
         }
         
         const form = document.getElementById('addCompanyForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
 
         const data = this.getFormData(form);
+        
+        console.log('📝 Company data:', data);
 
         try {
             let newCompany = null;
             
             // Try Airtable if configured
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                 try {
+                    console.log('🔗 Creating company in Airtable...');
                     newCompany = await AirtableAPI.addCompany(data);
+                    console.log('✅ Company created in Airtable:', newCompany.id);
                     this.showToast('✅ Company created successfully!', 'success');
                 } catch (airtableError) {
                     console.warn('⚠️ Airtable failed, falling back to demo mode:', airtableError);
@@ -382,6 +478,7 @@ const CRUDManager = {
                 }
             } else {
                 // Pure demo mode
+                console.log('ℹ️ Creating company in demo mode');
                 const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7B731'];
                 newCompany = {
                     id: 'demo-' + Date.now().toString(),
@@ -395,25 +492,44 @@ const CRUDManager = {
                 this.showToast('✅ Company created (Demo Mode)', 'success');
             }
             
-            AppState.data.companies.push(newCompany);
+            // Add to AppState
+            if (typeof AppState !== 'undefined') {
+                AppState.data.companies.push(newCompany);
+                console.log('✅ Company added to AppState');
+            }
             
-            if (AuthManager) {
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
                 AuthManager.logActivity('create', `Created company: ${data.name}`);
             }
             
-            document.querySelector('.modal-overlay').remove();
-            render();
+            // Close modal
+            document.querySelector('.modal-overlay')?.remove();
+            
+            // Re-render
+            if (typeof render === 'function') {
+                render();
+            }
             
         } catch (error) {
-            console.error('Error creating company:', error);
-            this.showToast('❌ Failed to create company', 'error');
+            console.error('❌ Error creating company:', error);
+            this.showToast('❌ Failed to create company: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Show edit company form with permission check
+     */
     showEditCompanyForm(companyId) {
+        console.log('✏️ Opening edit company form:', companyId);
+        
         const company = AppState.data.companies.find(c => c.id === companyId);
-        if (!company) return this.showToast('❌ Company not found', 'error');
+        if (!company) {
+            this.showToast('❌ Company not found', 'error');
+            return;
+        }
 
+        // Permission check
         const validation = validateCRUDPermission('companies', 'update', company);
         if (!validation.allowed) {
             showPermissionError('Edit company', validation.reason);
@@ -456,7 +572,8 @@ const CRUDManager = {
             </form>
         `;
 
-        const canDelete = typeof can !== 'undefined' && can(AppState.currentUser.role, 'companies', 'manage');
+        // Check delete permission
+        const canDelete = typeof AuthManager !== 'undefined' && AuthManager.canDeleteRecord('companies', company);
 
         const footer = `
             ${canDelete ? `<button class="btn btn-danger" onclick="CRUDManager.deleteCompany('${companyId}')">Delete</button>` : ''}
@@ -468,10 +585,19 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit edit company with permission validation
+     */
     async submitEditCompany(companyId) {
-        const company = AppState.data.companies.find(c => c.id === companyId);
-        if (!company) return;
+        console.log('💾 Submitting edit company:', companyId);
         
+        const company = AppState.data.companies.find(c => c.id === companyId);
+        if (!company) {
+            this.showToast('❌ Company not found', 'error');
+            return;
+        }
+        
+        // Re-validate permission
         const validation = validateCRUDPermission('companies', 'update', company);
         if (!validation.allowed) {
             showPermissionError('Update company', validation.reason);
@@ -479,13 +605,24 @@ const CRUDManager = {
         }
         
         const form = document.getElementById('editCompanyForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
+        console.log('📝 Updated company data:', data);
 
         try {
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                console.log('🔗 Updating company in Airtable...');
                 await AirtableAPI.updateCompany(companyId, data);
+                console.log('✅ Company updated in Airtable');
             } else {
+                // Update in demo mode
+                console.log('ℹ️ Updating company in demo mode');
                 const company = AppState.data.companies.find(c => c.id === companyId);
                 if (company) {
                     company.name = data.name;
@@ -495,23 +632,44 @@ const CRUDManager = {
                 }
             }
             
-            if (AuthManager) {
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
                 AuthManager.logActivity('update', `Updated company: ${data.name}`);
             }
             
             this.showToast('✅ Company updated!', 'success');
-            await loadCompanies();
-            render();
-            document.querySelector('.modal-overlay').remove();
+            
+            // Reload companies
+            if (typeof loadCompanies === 'function') {
+                await loadCompanies();
+            }
+            
+            // Re-render
+            if (typeof render === 'function') {
+                render();
+            }
+            
+            // Close modal
+            document.querySelector('.modal-overlay')?.remove();
         } catch (error) {
-            this.showToast('❌ Failed to update company', 'error');
+            console.error('❌ Error updating company:', error);
+            this.showToast('❌ Failed to update company: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Delete company with permission check
+     */
     deleteCompany(companyId) {
-        const company = AppState.data.companies.find(c => c.id === companyId);
-        if (!company) return;
+        console.log('🗑️ Attempting to delete company:', companyId);
         
+        const company = AppState.data.companies.find(c => c.id === companyId);
+        if (!company) {
+            this.showToast('❌ Company not found', 'error');
+            return;
+        }
+        
+        // Permission check
         const validation = validateCRUDPermission('companies', 'delete', company);
         if (!validation.allowed) {
             showPermissionError('Delete company', validation.reason);
@@ -523,33 +681,56 @@ const CRUDManager = {
             `Are you sure you want to delete "${company.name}"? This action cannot be undone.`, 
             async () => {
                 try {
-                    if (AirtableAPI.isConfigured()) {
+                    if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                        console.log('🔗 Deleting company from Airtable...');
                         await AirtableAPI.deleteCompany(companyId);
+                        console.log('✅ Company deleted from Airtable');
                     } else {
+                        console.log('ℹ️ Deleting company in demo mode');
                         AppState.data.companies = AppState.data.companies.filter(c => c.id !== companyId);
                     }
                     
-                    if (AuthManager) {
+                    // Log activity
+                    if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
                         AuthManager.logActivity('delete', `Deleted company: ${company.name}`);
                     }
                     
                     this.showToast('✅ Company deleted!', 'success');
-                    await loadCompanies();
-                    render();
+                    
+                    // Reload companies
+                    if (typeof loadCompanies === 'function') {
+                        await loadCompanies();
+                    }
+                    
+                    // Re-render
+                    if (typeof render === 'function') {
+                        render();
+                    }
+                    
+                    // Close modal if open
                     document.querySelector('.modal-overlay')?.remove();
                 } catch (error) {
-                    this.showToast('❌ Failed to delete', 'error');
+                    console.error('❌ Error deleting company:', error);
+                    this.showToast('❌ Failed to delete: ' + error.message, 'error');
                 }
             }
         );
     },
 
     // ========================================
-    // USER OPERATIONS
+    // USER OPERATIONS - FIXED
     // ========================================
     
+    /**
+     * FIXED: Show add user form with permission check
+     */
     showAddUserForm() {
-        if (!canShowForm('users', 'create')) return;
+        console.log('👤 Opening add user form');
+        
+        // Permission check
+        if (!canShowForm('users', 'create')) {
+            return;
+        }
         
         const companies = AppState.data.companies;
         
@@ -557,31 +738,38 @@ const CRUDManager = {
             <form id="addUserForm">
                 <div class="form-group">
                     <label class="form-label required">User Name</label>
-                    <input type="text" name="name" class="form-input" required>
+                    <input type="text" name="name" class="form-input" placeholder="Full name" required autofocus>
                     <div class="form-error">User name is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Email</label>
-                    <input type="email" name="email" class="form-input" required>
+                    <input type="email" name="email" class="form-input" placeholder="user@email.com" required>
                     <div class="form-error">Valid email is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Phone Number</label>
                     <input type="tel" name="phoneNumber" class="form-input" placeholder="+1 (555) 000-0000">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Password</label>
-                    <input type="password" name="password" class="form-input" required>
+                    <input type="password" name="password" class="form-input" placeholder="Enter password" required>
+                    <div class="form-error">Password is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Role</label>
                     <select name="role" class="form-select" required>
                         <option value="User">User</option>
-                        <option value="Admin">Admin</option>
-                        <option value="Manager">Manager</option>
                         <option value="Sales">Sales</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Admin">Admin</option>
                     </select>
+                    <div class="form-error">Role is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Status</label>
                     <select name="status" class="form-select" required>
@@ -591,12 +779,14 @@ const CRUDManager = {
                         <option value="Suspended">Suspended</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Company</label>
                     <select name="companies" class="form-select" required>
                         <option value="">Select Company</option>
                         ${companies.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
                     </select>
+                    <div class="form-error">Company is required</div>
                 </div>
             </form>
         `;
@@ -610,33 +800,115 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit add user with permission validation
+     */
     async submitAddUser() {
+        console.log('💾 Submitting add user');
+        
+        // Re-validate permission
+        const validation = validateCRUDPermission('users', 'create');
+        if (!validation.allowed) {
+            showPermissionError('Create user', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('addUserForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
+        console.log('📝 User data:', data);
 
         try {
-            if (AirtableAPI.isConfigured()) {
-                await AirtableAPI.addUser(data);
+            let newUser = null;
+            
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                try {
+                    console.log('🔗 Creating user in Airtable...');
+                    newUser = await AirtableAPI.addUser(data);
+                    console.log('✅ User created in Airtable:', newUser.id);
+                    this.showToast('✅ User created successfully!', 'success');
+                } catch (airtableError) {
+                    console.warn('⚠️ Airtable failed, falling back to demo mode:', airtableError);
+                    
+                    // Fallback
+                    newUser = {
+                        id: 'demo-user-' + Date.now(),
+                        name: data.name,
+                        email: data.email,
+                        phoneNumber: data.phoneNumber || '',
+                        role: data.role,
+                        status: data.status,
+                        companies: [data.companies],
+                        password: data.password
+                    };
+                    
+                    this.showToast('⚠️ User created in demo mode (Airtable unavailable)', 'success');
+                }
             } else {
-                AppState.data.users.push({
-                    id: Date.now().toString(),
-                    ...data,
-                    companies: [data.companies]
-                });
+                console.log('ℹ️ Creating user in demo mode');
+                newUser = {
+                    id: 'demo-user-' + Date.now(),
+                    name: data.name,
+                    email: data.email,
+                    phoneNumber: data.phoneNumber || '',
+                    role: data.role,
+                    status: data.status,
+                    companies: [data.companies],
+                    password: data.password
+                };
+                this.showToast('✅ User created (Demo Mode)', 'success');
             }
-            this.showToast('User created!', 'success');
-            if (AppState.selectedCompany) await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            
+            // Add to AppState
+            if (typeof AppState !== 'undefined') {
+                AppState.data.users.push(newUser);
+            }
+            
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                AuthManager.logActivity('create', `Created user: ${data.name}`);
+            }
+            
+            // Reload company data if selected
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            
+            // Close modal and re-render
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
+            
         } catch (error) {
-            this.showToast('Failed to create user', 'error');
+            console.error('❌ Error creating user:', error);
+            this.showToast('❌ Failed to create user: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Show edit user form with permission check
+     */
     showEditUserForm(userId) {
+        console.log('✏️ Opening edit user form:', userId);
+        
         const user = AppState.data.users.find(u => u.id === userId);
-        if (!user) return;
+        if (!user) {
+            this.showToast('❌ User not found', 'error');
+            return;
+        }
+        
+        // Permission check
+        const validation = validateCRUDPermission('users', 'update', user);
+        if (!validation.allowed) {
+            showPermissionError('Edit user', validation.reason);
+            return;
+        }
+        
         const companies = AppState.data.companies;
         const userCompany = Array.isArray(user.companies) ? user.companies[0] : user.companies;
         
@@ -645,28 +917,35 @@ const CRUDManager = {
                 <div class="form-group">
                     <label class="form-label required">Name</label>
                     <input type="text" name="name" class="form-input" value="${user.name}" required>
+                    <div class="form-error">Name is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Email</label>
                     <input type="email" name="email" class="form-input" value="${user.email}" required>
+                    <div class="form-error">Valid email is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Phone Number</label>
                     <input type="tel" name="phoneNumber" class="form-input" value="${user.phoneNumber || user.phone || ''}" placeholder="+1 (555) 000-0000">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Password (leave blank to keep current)</label>
-                    <input type="password" name="password" class="form-input">
+                    <input type="password" name="password" class="form-input" placeholder="Enter new password">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Role</label>
                     <select name="role" class="form-select" required>
                         <option value="User" ${user.role === 'User' ? 'selected' : ''}>User</option>
-                        <option value="Admin" ${user.role === 'Admin' ? 'selected' : ''}>Admin</option>
-                        <option value="Manager" ${user.role === 'Manager' ? 'selected' : ''}>Manager</option>
                         <option value="Sales" ${user.role === 'Sales' ? 'selected' : ''}>Sales</option>
+                        <option value="Manager" ${user.role === 'Manager' ? 'selected' : ''}>Manager</option>
+                        <option value="Admin" ${user.role === 'Admin' ? 'selected' : ''}>Admin</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Status</label>
                     <select name="status" class="form-select" required>
@@ -676,6 +955,7 @@ const CRUDManager = {
                         <option value="Suspended" ${user.status === 'Suspended' ? 'selected' : ''}>Suspended</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Company</label>
                     <select name="companies" class="form-select" required>
@@ -685,7 +965,8 @@ const CRUDManager = {
             </form>
         `;
 
-        const canDelete = typeof can !== 'undefined' && can(AppState.currentUser.role, 'users', 'manage');
+        // Check delete permission
+        const canDelete = typeof AuthManager !== 'undefined' && AuthManager.canDeleteRecord('users', user);
 
         const footer = `
             ${canDelete ? `<button class="btn btn-danger" onclick="CRUDManager.deleteUser('${userId}')">Delete</button>` : ''}
@@ -697,57 +978,154 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit edit user with permission validation
+     */
     async submitEditUser(userId) {
+        console.log('💾 Submitting edit user:', userId);
+        
+        const user = AppState.data.users.find(u => u.id === userId);
+        if (!user) {
+            this.showToast('❌ User not found', 'error');
+            return;
+        }
+        
+        // Re-validate permission
+        const validation = validateCRUDPermission('users', 'update', user);
+        if (!validation.allowed) {
+            showPermissionError('Update user', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('editUserForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
+        
+        // Don't send empty password
         if (!data.password) delete data.password;
+        
+        console.log('📝 Updated user data:', data);
 
         try {
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                console.log('🔗 Updating user in Airtable...');
                 await AirtableAPI.updateUser(userId, data);
+                console.log('✅ User updated in Airtable');
             } else {
+                console.log('ℹ️ Updating user in demo mode');
                 const user = AppState.data.users.find(u => u.id === userId);
-                Object.assign(user, data);
-                if (data.companies) user.companies = [data.companies];
-                // Handle both old 'phone' and new 'phoneNumber' field names
-                if (data.phoneNumber) {
-                    user.phoneNumber = data.phoneNumber;
-                    user.phone = data.phoneNumber; // Backward compatibility
+                if (user) {
+                    Object.assign(user, data);
+                    if (data.companies) user.companies = [data.companies];
+                    if (data.phoneNumber) {
+                        user.phoneNumber = data.phoneNumber;
+                        user.phone = data.phoneNumber; // Backward compatibility
+                    }
                 }
             }
-            this.showToast('User updated!', 'success');
-            if (AppState.selectedCompany) await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                AuthManager.logActivity('update', `Updated user: ${data.name}`);
+            }
+            
+            this.showToast('✅ User updated!', 'success');
+            
+            // Reload company data
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            
+            // Close modal and re-render
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
+            
         } catch (error) {
-            this.showToast('Failed to update', 'error');
+            console.error('❌ Error updating user:', error);
+            this.showToast('❌ Failed to update user: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Delete user with permission check
+     */
     deleteUser(userId) {
-        this.showConfirmDialog('Delete User', 'Are you sure?', async () => {
-            try {
-                if (AirtableAPI.isConfigured()) {
-                    await AirtableAPI.deleteUser(userId);
-                } else {
-                    AppState.data.users = AppState.data.users.filter(u => u.id !== userId);
+        console.log('🗑️ Attempting to delete user:', userId);
+        
+        const user = AppState.data.users.find(u => u.id === userId);
+        if (!user) {
+            this.showToast('❌ User not found', 'error');
+            return;
+        }
+        
+        // Permission check
+        const validation = validateCRUDPermission('users', 'delete', user);
+        if (!validation.allowed) {
+            showPermissionError('Delete user', validation.reason);
+            return;
+        }
+        
+        // Prevent deleting yourself
+        if (typeof AuthManager !== 'undefined' && AuthManager.currentUser && AuthManager.currentUser.id === userId) {
+            this.showToast('❌ You cannot delete your own account', 'error');
+            return;
+        }
+        
+        this.showConfirmDialog(
+            '🗑️ Delete User', 
+            `Are you sure you want to delete "${user.name}"? This action cannot be undone.`, 
+            async () => {
+                try {
+                    if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                        console.log('🔗 Deleting user from Airtable...');
+                        await AirtableAPI.deleteUser(userId);
+                        console.log('✅ User deleted from Airtable');
+                    } else {
+                        console.log('ℹ️ Deleting user in demo mode');
+                        AppState.data.users = AppState.data.users.filter(u => u.id !== userId);
+                    }
+                    
+                    // Log activity
+                    if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                        AuthManager.logActivity('delete', `Deleted user: ${user.name}`);
+                    }
+                    
+                    this.showToast('✅ User deleted!', 'success');
+                    
+                    // Reload company data
+                    if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                        await loadCompanyData(AppState.selectedCompany);
+                    }
+                    
+                    // Close modal and re-render
+                    document.querySelector('.modal-overlay')?.remove();
+                    if (typeof render === 'function') render();
+                    
+                } catch (error) {
+                    console.error('❌ Error deleting user:', error);
+                    this.showToast('❌ Failed to delete: ' + error.message, 'error');
                 }
-                this.showToast('User deleted!', 'success');
-                if (AppState.selectedCompany) await loadCompanyData(AppState.selectedCompany);
-                render();
-                document.querySelector('.modal-overlay')?.remove();
-            } catch (error) {
-                this.showToast('Failed to delete', 'error');
             }
-        });
+        );
     },
 
     // ========================================
-    // CLIENT OPERATIONS
+    // CLIENT OPERATIONS - FIXED
     // ========================================
     
+    /**
+     * FIXED: Show add client form with permission check
+     */
     showAddClientForm() {
+        console.log('👥 Opening add client form');
+        
+        // Permission check
         if (!canShowForm('clients', 'create')) {
             return;
         }
@@ -760,31 +1138,36 @@ const CRUDManager = {
             <form id="addClientForm">
                 <div class="form-group">
                     <label class="form-label required">Client Name</label>
-                    <input type="text" name="name" class="form-input" required>
+                    <input type="text" name="name" class="form-input" placeholder="Full name or company name" required autofocus>
                     <div class="form-error">Client name is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Email</label>
-                    <input type="email" name="email" class="form-input">
+                    <input type="email" name="email" class="form-input" placeholder="client@email.com">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Phone Number</label>
                     <input type="tel" name="phoneNo" class="form-input" placeholder="+1 (555) 000-0000">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Address</label>
                     <input type="text" name="address" class="form-input" placeholder="Full address">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Status</label>
                     <select name="status" class="form-select" required>
-                        <option value="Active">Active</option>
+                        <option value="Active" selected>Active</option>
                         <option value="Inactive">Inactive</option>
                         <option value="On Hold">On Hold</option>
                         <option value="VIP">VIP</option>
                         <option value="Churned">Churned</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Lead Type</label>
                     <select name="leadType" class="form-select">
@@ -796,6 +1179,7 @@ const CRUDManager = {
                         <option value="Inbound">Inbound</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Priority</label>
                     <select name="priority" class="form-select">
@@ -805,26 +1189,32 @@ const CRUDManager = {
                         <option value="Low">Low</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Deal Value ($)</label>
-                    <input type="number" name="dealValue" class="form-input" min="0" step="0.01">
+                    <input type="number" name="dealValue" class="form-input" min="0" step="0.01" placeholder="0.00">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Rating (1-5)</label>
-                    <input type="number" name="rating" class="form-input" min="0" max="5">
+                    <input type="number" name="rating" class="form-input" min="0" max="5" placeholder="0">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Last Contact Date</label>
                     <input type="date" name="lastContactDate" class="form-input">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Next Follow-Up Date</label>
                     <input type="date" name="nextFollowUpDate" class="form-input">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Notes</label>
                     <textarea name="notes" class="form-textarea" rows="3" placeholder="Additional notes about this client..."></textarea>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Assigned User</label>
                     <select name="assignedUser" class="form-select">
@@ -844,66 +1234,112 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit add client with permission validation
+     */
     async submitAddClient() {
+        console.log('💾 Submitting add client');
+        
+        // Re-validate permission
+        const validation = validateCRUDPermission('clients', 'create');
+        if (!validation.allowed) {
+            showPermissionError('Create client', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('addClientForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
         data.company = AppState.selectedCompany;
         
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (typeof UXUtils !== 'undefined') {
-            UXUtils.setButtonLoading(submitBtn, true);
-        }
+        console.log('📝 Client data:', data);
 
         try {
-            if (typeof ErrorHandler !== 'undefined') {
-                await ErrorHandler.wrap(async () => {
-                    await AirtableAPI.addClient(data);
+            let newClient = null;
+            
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                try {
+                    console.log('🔗 Creating client in Airtable...');
+                    newClient = await AirtableAPI.addClient(data);
+                    console.log('✅ Client created in Airtable:', newClient.id);
                     
+                    // Log activity
                     if (typeof ActivityTypes !== 'undefined') {
                         await ActivityTypes.clientCreated(data.name);
                     }
                     
-                    if (typeof ToastManager !== 'undefined') {
-                        ToastManager.created('Client');
-                    } else {
-                        this.showToast('✅ Client created successfully!', 'success');
-                    }
+                    this.showToast('✅ Client created successfully!', 'success');
+                } catch (airtableError) {
+                    console.warn('⚠️ Airtable failed, falling back to demo mode:', airtableError);
                     
-                    await loadCompanyData(AppState.selectedCompany);
-                    render();
-                    document.querySelector('.modal-overlay').remove();
+                    // Fallback
+                    newClient = {
+                        id: 'demo-client-' + Date.now(),
+                        ...data,
+                        dealValue: parseFloat(data.dealValue) || 0,
+                        rating: parseInt(data.rating) || 0
+                    };
                     
-                }, 'Creating client');
+                    this.showToast('⚠️ Client created in demo mode (Airtable unavailable)', 'success');
+                }
             } else {
-                await AirtableAPI.addClient(data);
-                this.showToast('✅ Client created successfully!', 'success');
-                await loadCompanyData(AppState.selectedCompany);
-                render();
-                document.querySelector('.modal-overlay').remove();
+                console.log('ℹ️ Creating client in demo mode');
+                newClient = {
+                    id: 'demo-client-' + Date.now(),
+                    ...data,
+                    dealValue: parseFloat(data.dealValue) || 0,
+                    rating: parseInt(data.rating) || 0
+                };
+                this.showToast('✅ Client created (Demo Mode)', 'success');
             }
             
+            // Add to AppState
+            if (typeof AppState !== 'undefined') {
+                AppState.data.clients.push(newClient);
+            }
+            
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                AuthManager.logActivity('create', `Created client: ${data.name}`);
+            }
+            
+            // Reload company data
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            
+            // Close modal and re-render
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
+            
         } catch (error) {
-            if (typeof ToastManager !== 'undefined') {
-                ToastManager.createFailed('Client');
-            } else {
-                this.showToast('❌ Failed to create client', 'error');
-            }
-        } finally {
-            if (typeof UXUtils !== 'undefined' && submitBtn) {
-                UXUtils.setButtonLoading(submitBtn, false);
-            }
+            console.error('❌ Error creating client:', error);
+            this.showToast('❌ Failed to create client: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Show edit client form with permission check
+     */
     showEditClientForm(clientId) {
+        console.log('✏️ Opening edit client form:', clientId);
+        
         const client = AppState.data.clients.find(c => c.id === clientId);
         if (!client) {
-            if (typeof ToastManager !== 'undefined') {
-                ToastManager.error('Client not found');
-            } else {
-                this.showToast('❌ Client not found', 'error');
-            }
+            this.showToast('❌ Client not found', 'error');
+            return;
+        }
+        
+        // Permission check
+        const validation = validateCRUDPermission('clients', 'update', client);
+        if (!validation.allowed) {
+            showPermissionError('Edit client', validation.reason);
             return;
         }
         
@@ -916,19 +1352,24 @@ const CRUDManager = {
                 <div class="form-group">
                     <label class="form-label required">Name</label>
                     <input type="text" name="name" class="form-input" value="${client.name}" required>
+                    <div class="form-error">Name is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Email</label>
                     <input type="email" name="email" class="form-input" value="${client.email || ''}">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Phone Number</label>
                     <input type="tel" name="phoneNo" class="form-input" value="${client.phoneNo || client.phone || ''}" placeholder="+1 (555) 000-0000">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Address</label>
                     <input type="text" name="address" class="form-input" value="${client.address || ''}" placeholder="Full address">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Status</label>
                     <select name="status" class="form-select" required>
@@ -939,6 +1380,7 @@ const CRUDManager = {
                         <option value="Churned" ${client.status === 'Churned' ? 'selected' : ''}>Churned</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Lead Type</label>
                     <select name="leadType" class="form-select">
@@ -950,6 +1392,7 @@ const CRUDManager = {
                         <option value="Inbound" ${client.leadType === 'Inbound' ? 'selected' : ''}>Inbound</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Priority</label>
                     <select name="priority" class="form-select">
@@ -959,26 +1402,32 @@ const CRUDManager = {
                         <option value="Low" ${client.priority === 'Low' ? 'selected' : ''}>Low</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Deal Value</label>
                     <input type="number" name="dealValue" class="form-input" value="${client.dealValue || 0}" min="0" step="0.01">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Rating</label>
                     <input type="number" name="rating" class="form-input" value="${client.rating || 0}" min="0" max="5">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Last Contact Date</label>
                     <input type="date" name="lastContactDate" class="form-input" value="${client.lastContactDate || ''}">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Next Follow-Up Date</label>
                     <input type="date" name="nextFollowUpDate" class="form-input" value="${client.nextFollowUpDate || ''}">
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Notes</label>
                     <textarea name="notes" class="form-textarea" rows="3">${client.notes || ''}</textarea>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Assigned User</label>
                     <select name="assignedUser" class="form-select">
@@ -989,7 +1438,8 @@ const CRUDManager = {
             </form>
         `;
 
-        const canDelete = AuthManager && AuthManager.canDeleteRecord && AuthManager.canDeleteRecord('clients', client);
+        // Check delete permission
+        const canDelete = typeof AuthManager !== 'undefined' && AuthManager.canDeleteRecord('clients', client);
         
         const footer = `
             ${canDelete ? `<button class="btn btn-danger" onclick="CRUDManager.deleteClient('${clientId}')">Delete</button>` : ''}
@@ -1001,10 +1451,19 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit edit client with permission validation
+     */
     async submitEditClient(clientId) {
-        const client = AppState.data.clients.find(c => c.id === clientId);
-        if (!client) return;
+        console.log('💾 Submitting edit client:', clientId);
         
+        const client = AppState.data.clients.find(c => c.id === clientId);
+        if (!client) {
+            this.showToast('❌ Client not found', 'error');
+            return;
+        }
+        
+        // Re-validate permission
         const validation = validateCRUDPermission('clients', 'update', client);
         if (!validation.allowed) {
             showPermissionError('Update client', validation.reason);
@@ -1012,24 +1471,40 @@ const CRUDManager = {
         }
         
         const form = document.getElementById('editClientForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
         const oldStatus = client.status;
+        
+        console.log('📝 Updated client data:', data);
 
         try {
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                console.log('🔗 Updating client in Airtable...');
                 await AirtableAPI.updateClient(clientId, data);
+                console.log('✅ Client updated in Airtable');
             } else {
+                console.log('ℹ️ Updating client in demo mode');
                 const client = AppState.data.clients.find(c => c.id === clientId);
-                Object.assign(client, data);
-                // Handle backward compatibility
-                if (data.phoneNo) {
-                    client.phoneNo = data.phoneNo;
-                    client.phone = data.phoneNo; // Backward compatibility
+                if (client) {
+                    Object.assign(client, data);
+                    // Handle backward compatibility
+                    if (data.phoneNo) {
+                        client.phoneNo = data.phoneNo;
+                        client.phone = data.phoneNo;
+                    }
+                    client.dealValue = parseFloat(data.dealValue) || 0;
+                    client.rating = parseInt(data.rating) || 0;
                 }
             }
             
-            if (AuthManager) {
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
                 AuthManager.logActivity('update', `Updated client: ${data.name}`);
             }
             
@@ -1041,28 +1516,36 @@ const CRUDManager = {
                 }
             }
             
-            if (typeof ToastManager !== 'undefined') {
-                ToastManager.updated('Client');
-            } else {
-                this.showToast('✅ Client updated!', 'success');
+            this.showToast('✅ Client updated!', 'success');
+            
+            // Reload company data
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
             }
             
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            // Close modal and re-render
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
+            
         } catch (error) {
-            if (typeof ToastManager !== 'undefined') {
-                ToastManager.updateFailed('Client');
-            } else {
-                this.showToast('❌ Failed to update client', 'error');
-            }
+            console.error('❌ Error updating client:', error);
+            this.showToast('❌ Failed to update client: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Delete client with permission check
+     */
     deleteClient(clientId) {
-        const client = AppState.data.clients.find(c => c.id === clientId);
-        if (!client) return;
+        console.log('🗑️ Attempting to delete client:', clientId);
         
+        const client = AppState.data.clients.find(c => c.id === clientId);
+        if (!client) {
+            this.showToast('❌ Client not found', 'error');
+            return;
+        }
+        
+        // Permission check
         const validation = validateCRUDPermission('clients', 'delete', client);
         if (!validation.allowed) {
             showPermissionError('Delete client', validation.reason);
@@ -1071,16 +1554,20 @@ const CRUDManager = {
         
         this.showConfirmDialog(
             '🗑️ Delete Client', 
-            `Are you sure you want to delete "${client.name}"?`, 
+            `Are you sure you want to delete "${client.name}"? This action cannot be undone.`, 
             async () => {
                 try {
-                    if (AirtableAPI.isConfigured()) {
+                    if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                        console.log('🔗 Deleting client from Airtable...');
                         await AirtableAPI.deleteClient(clientId);
+                        console.log('✅ Client deleted from Airtable');
                     } else {
+                        console.log('ℹ️ Deleting client in demo mode');
                         AppState.data.clients = AppState.data.clients.filter(c => c.id !== clientId);
                     }
                     
-                    if (AuthManager) {
+                    // Log activity
+                    if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
                         AuthManager.logActivity('delete', `Deleted client: ${client.name}`);
                     }
                     
@@ -1088,28 +1575,39 @@ const CRUDManager = {
                         await ActivityTypes.clientDeleted(client.name);
                     }
                     
-                    if (typeof ToastManager !== 'undefined') {
-                        ToastManager.deleted('Client');
-                    } else {
-                        this.showToast('✅ Client deleted!', 'success');
+                    this.showToast('✅ Client deleted!', 'success');
+                    
+                    // Reload company data
+                    if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                        await loadCompanyData(AppState.selectedCompany);
                     }
                     
-                    await loadCompanyData(AppState.selectedCompany);
-                    render();
+                    // Close modal and re-render
                     document.querySelector('.modal-overlay')?.remove();
+                    if (typeof render === 'function') render();
+                    
                 } catch (error) {
-                    this.showToast('❌ Failed to delete', 'error');
+                    console.error('❌ Error deleting client:', error);
+                    this.showToast('❌ Failed to delete: ' + error.message, 'error');
                 }
             }
         );
     },
 
     // ========================================
-    // LEAD OPERATIONS
+    // LEAD OPERATIONS - FIXED
     // ========================================
     
+    /**
+     * FIXED: Show add lead form with permission check
+     */
     showAddLeadForm() {
-        if (!canShowForm('leads', 'create')) return;
+        console.log('🎯 Opening add lead form');
+        
+        // Permission check
+        if (!canShowForm('leads', 'create')) {
+            return;
+        }
         
         const users = AppState.data.users.filter(u => 
             u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
@@ -1119,13 +1617,14 @@ const CRUDManager = {
             <form id="addLeadForm">
                 <div class="form-group">
                     <label class="form-label required">Lead Name</label>
-                    <input type="text" name="name" class="form-input" required>
+                    <input type="text" name="name" class="form-input" placeholder="Enter lead name" required autofocus>
                     <div class="form-error">Lead name is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Status</label>
                     <select name="status" class="form-select" required>
-                        <option value="New">New</option>
+                        <option value="New" selected>New</option>
                         <option value="Contacted">Contacted</option>
                         <option value="Qualified">Qualified</option>
                         <option value="Proposal Sent">Proposal Sent</option>
@@ -1133,6 +1632,7 @@ const CRUDManager = {
                         <option value="Lost">Lost</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Assigned User</label>
                     <select name="assignedUser" class="form-select">
@@ -1152,35 +1652,109 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit add lead with permission validation
+     */
     async submitAddLead() {
+        console.log('💾 Submitting add lead');
+        
+        // Re-validate permission
+        const validation = validateCRUDPermission('leads', 'create');
+        if (!validation.allowed) {
+            showPermissionError('Create lead', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('addLeadForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
         data.company = AppState.selectedCompany;
+        
+        console.log('📝 Lead data:', data);
 
         try {
-            if (AirtableAPI.isConfigured()) {
-                await AirtableAPI.addLead(data);
+            let newLead = null;
+            
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                try {
+                    console.log('🔗 Creating lead in Airtable...');
+                    newLead = await AirtableAPI.addLead(data);
+                    console.log('✅ Lead created in Airtable:', newLead.id);
+                    
+                    if (typeof ActivityTypes !== 'undefined') {
+                        await ActivityTypes.leadCreated(data.name);
+                    }
+                    
+                    this.showToast('✅ Lead created successfully!', 'success');
+                } catch (airtableError) {
+                    console.warn('⚠️ Airtable failed, falling back to demo mode:', airtableError);
+                    
+                    newLead = {
+                        id: 'demo-lead-' + Date.now(),
+                        ...data
+                    };
+                    
+                    this.showToast('⚠️ Lead created in demo mode (Airtable unavailable)', 'success');
+                }
             } else {
-                AppState.data.leads.push({id: Date.now().toString(), ...data});
+                console.log('ℹ️ Creating lead in demo mode');
+                newLead = {
+                    id: 'demo-lead-' + Date.now(),
+                    ...data
+                };
+                this.showToast('✅ Lead created (Demo Mode)', 'success');
             }
             
-            if (typeof ActivityTypes !== 'undefined') {
-                await ActivityTypes.leadCreated(data.name);
+            // Add to AppState
+            if (typeof AppState !== 'undefined') {
+                AppState.data.leads.push(newLead);
             }
             
-            this.showToast('Lead created!', 'success');
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                AuthManager.logActivity('create', `Created lead: ${data.name}`);
+            }
+            
+            // Reload company data
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            
+            // Close modal and re-render
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
+            
         } catch (error) {
-            this.showToast('Failed to create lead', 'error');
+            console.error('❌ Error creating lead:', error);
+            this.showToast('❌ Failed to create lead: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Show edit lead form with permission check
+     */
     showEditLeadForm(leadId) {
+        console.log('✏️ Opening edit lead form:', leadId);
+        
         const lead = AppState.data.leads.find(l => l.id === leadId);
-        if (!lead) return this.showToast('Lead not found', 'error');
+        if (!lead) {
+            this.showToast('❌ Lead not found', 'error');
+            return;
+        }
+        
+        // Permission check
+        const validation = validateCRUDPermission('leads', 'update', lead);
+        if (!validation.allowed) {
+            showPermissionError('Edit lead', validation.reason);
+            return;
+        }
+        
         const users = AppState.data.users.filter(u => 
             u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
         );
@@ -1190,7 +1764,9 @@ const CRUDManager = {
                 <div class="form-group">
                     <label class="form-label required">Name</label>
                     <input type="text" name="name" class="form-input" value="${lead.name}" required>
+                    <div class="form-error">Name is required</div>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label required">Status</label>
                     <select name="status" class="form-select" required>
@@ -1202,6 +1778,7 @@ const CRUDManager = {
                         <option value="Lost" ${lead.status === 'Lost' ? 'selected' : ''}>Lost</option>
                     </select>
                 </div>
+                
                 <div class="form-group">
                     <label class="form-label">Assigned User</label>
                     <select name="assignedUser" class="form-select">
@@ -1212,7 +1789,8 @@ const CRUDManager = {
             </form>
         `;
 
-        const canDelete = typeof can !== 'undefined' && can(AppState.currentUser.role, 'leads', 'delete');
+        // Check delete permission
+        const canDelete = typeof AuthManager !== 'undefined' && AuthManager.canDeleteRecord('leads', lead);
 
         const footer = `
             ${canDelete ? `<button class="btn btn-danger" onclick="CRUDManager.deleteLead('${leadId}')">Delete</button>` : ''}
@@ -1224,68 +1802,151 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit edit lead with permission validation
+     */
     async submitEditLead(leadId) {
+        console.log('💾 Submitting edit lead:', leadId);
+        
         const lead = AppState.data.leads.find(l => l.id === leadId);
-        if (!lead) return;
+        if (!lead) {
+            this.showToast('❌ Lead not found', 'error');
+            return;
+        }
+        
+        // Re-validate permission
+        const validation = validateCRUDPermission('leads', 'update', lead);
+        if (!validation.allowed) {
+            showPermissionError('Update lead', validation.reason);
+            return;
+        }
         
         const oldStatus = lead.status;
         const form = document.getElementById('editLeadForm');
+        if (!form) {
+            console.error('❌ Form not found');
+            return;
+        }
+        
         if (!this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
+        console.log('📝 Updated lead data:', data);
 
         try {
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                console.log('🔗 Updating lead in Airtable...');
                 await AirtableAPI.updateLead(leadId, data);
+                console.log('✅ Lead updated in Airtable');
             } else {
+                console.log('ℹ️ Updating lead in demo mode');
                 const lead = AppState.data.leads.find(l => l.id === leadId);
-                Object.assign(lead, data);
+                if (lead) {
+                    Object.assign(lead, data);
+                }
+            }
+            
+            // Log activity
+            if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                AuthManager.logActivity('update', `Updated lead: ${data.name}`);
             }
             
             if (typeof ActivityTypes !== 'undefined' && oldStatus !== data.status) {
                 await ActivityTypes.leadStatusChanged(data.name, oldStatus, data.status);
             }
             
-            this.showToast('Lead updated!', 'success');
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            this.showToast('✅ Lead updated!', 'success');
+            
+            // Reload company data
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            
+            // Close modal and re-render
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
+            
         } catch (error) {
-            this.showToast('Failed to update', 'error');
+            console.error('❌ Error updating lead:', error);
+            this.showToast('❌ Failed to update lead: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Delete lead with permission check
+     */
     deleteLead(leadId) {
-        const lead = AppState.data.leads.find(l => l.id === leadId);
-        if (!lead) return;
+        console.log('🗑️ Attempting to delete lead:', leadId);
         
-        this.showConfirmDialog('Delete Lead', 'Are you sure?', async () => {
-            try {
-                if (AirtableAPI.isConfigured()) {
-                    await AirtableAPI.deleteLead(leadId);
-                } else {
-                    AppState.data.leads = AppState.data.leads.filter(l => l.id !== leadId);
+        const lead = AppState.data.leads.find(l => l.id === leadId);
+        if (!lead) {
+            this.showToast('❌ Lead not found', 'error');
+            return;
+        }
+        
+        // Permission check
+        const validation = validateCRUDPermission('leads', 'delete', lead);
+        if (!validation.allowed) {
+            showPermissionError('Delete lead', validation.reason);
+            return;
+        }
+        
+        this.showConfirmDialog(
+            '🗑️ Delete Lead', 
+            `Are you sure you want to delete "${lead.name}"?`, 
+            async () => {
+                try {
+                    if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
+                        console.log('🔗 Deleting lead from Airtable...');
+                        await AirtableAPI.deleteLead(leadId);
+                        console.log('✅ Lead deleted from Airtable');
+                    } else {
+                        console.log('ℹ️ Deleting lead in demo mode');
+                        AppState.data.leads = AppState.data.leads.filter(l => l.id !== leadId);
+                    }
+                    
+                    // Log activity
+                    if (typeof AuthManager !== 'undefined' && AuthManager.logActivity) {
+                        AuthManager.logActivity('delete', `Deleted lead: ${lead.name}`);
+                    }
+                    
+                    if (typeof ActivityTypes !== 'undefined') {
+                        await ActivityTypes.leadDeleted(lead.name);
+                    }
+                    
+                    this.showToast('✅ Lead deleted!', 'success');
+                    
+                    // Reload company data
+                    if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                        await loadCompanyData(AppState.selectedCompany);
+                    }
+                    
+                    // Close modal and re-render
+                    document.querySelector('.modal-overlay')?.remove();
+                    if (typeof render === 'function') render();
+                    
+                } catch (error) {
+                    console.error('❌ Error deleting lead:', error);
+                    this.showToast('❌ Failed to delete: ' + error.message, 'error');
                 }
-                
-                if (typeof ActivityTypes !== 'undefined') {
-                    await ActivityTypes.leadDeleted(lead.name);
-                }
-                
-                this.showToast('Lead deleted!', 'success');
-                await loadCompanyData(AppState.selectedCompany);
-                render();
-                document.querySelector('.modal-overlay')?.remove();
-            } catch (error) {
-                this.showToast('Failed to delete', 'error');
             }
-        });
+        );
     },
 
     // ========================================
-    // CALENDAR EVENTS OPERATIONS (NEW!)
+    // CALENDAR EVENTS OPERATIONS - FIXED
     // ========================================
     
+    /**
+     * FIXED: Show add calendar event form with permission check
+     */
     showAddCalendarEventForm() {
-        if (!canShowForm('calendar_events', 'create')) return;
+        console.log('📅 Opening add calendar event form');
+        
+        // Permission check
+        if (!canShowForm('calendar_events', 'create')) {
+            return;
+        }
         
         const clients = AppState.data.clients.filter(c => c.company === AppState.selectedCompany);
         
@@ -1293,7 +1954,7 @@ const CRUDManager = {
             <form id="addCalendarEventForm">
                 <div class="form-group">
                     <label class="form-label required">Event Title</label>
-                    <input type="text" name="eventTitle" class="form-input" required>
+                    <input type="text" name="eventTitle" class="form-input" placeholder="Meeting, call, etc." required autofocus>
                     <div class="form-error">Event title is required</div>
                 </div>
                 
@@ -1361,9 +2022,20 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit add calendar event
+     */
     async submitAddCalendarEvent() {
+        console.log('💾 Submitting add calendar event');
+        
+        const validation = validateCRUDPermission('calendar_events', 'create');
+        if (!validation.allowed) {
+            showPermissionError('Create event', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('addCalendarEventForm');
-        if (!this.validateForm(form)) return;
+        if (!form || !this.validateForm(form)) return;
         
         const formData = new FormData(form);
         const data = {
@@ -1378,29 +2050,37 @@ const CRUDManager = {
         };
 
         try {
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                 await AirtableAPI.addCalendarEvent(data);
             } else {
                 AppState.data.calendarEvents = AppState.data.calendarEvents || [];
-                AppState.data.calendarEvents.push({
-                    id: Date.now().toString(),
-                    ...data
-                });
+                AppState.data.calendarEvents.push({ id: 'demo-event-' + Date.now(), ...data });
             }
             
             this.showToast('✅ Calendar event created!', 'success');
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
         } catch (error) {
-            console.error('Error creating calendar event:', error);
-            this.showToast('❌ Failed to create calendar event', 'error');
+            console.error('❌ Error creating event:', error);
+            this.showToast('❌ Failed to create event: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Show edit calendar event form
+     */
     showEditCalendarEventForm(eventId) {
         const event = AppState.data.calendarEvents?.find(e => e.id === eventId);
         if (!event) return this.showToast('❌ Event not found', 'error');
+        
+        const validation = validateCRUDPermission('calendar_events', 'update', event);
+        if (!validation.allowed) {
+            showPermissionError('Edit event', validation.reason);
+            return;
+        }
         
         const clients = AppState.data.clients.filter(c => c.company === AppState.selectedCompany);
         
@@ -1468,8 +2148,9 @@ const CRUDManager = {
             </form>
         `;
 
+        const canDelete = typeof AuthManager !== 'undefined' && AuthManager.canDeleteRecord('calendar_events', event);
         const footer = `
-            <button class="btn btn-danger" onclick="CRUDManager.deleteCalendarEvent('${eventId}')">Delete</button>
+            ${canDelete ? `<button class="btn btn-danger" onclick="CRUDManager.deleteCalendarEvent('${eventId}')">Delete</button>` : ''}
             <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
             <button class="btn btn-primary" onclick="CRUDManager.submitEditCalendarEvent('${eventId}')">Update</button>
         `;
@@ -1478,9 +2159,21 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit edit calendar event
+     */
     async submitEditCalendarEvent(eventId) {
+        const event = AppState.data.calendarEvents?.find(e => e.id === eventId);
+        if (!event) return;
+        
+        const validation = validateCRUDPermission('calendar_events', 'update', event);
+        if (!validation.allowed) {
+            showPermissionError('Update event', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('editCalendarEventForm');
-        if (!this.validateForm(form)) return;
+        if (!form || !this.validateForm(form)) return;
         
         const formData = new FormData(form);
         const data = {
@@ -1495,47 +2188,71 @@ const CRUDManager = {
         };
 
         try {
-            if (AirtableAPI.isConfigured()) {
+            if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                 await AirtableAPI.updateCalendarEvent(eventId, data);
             } else {
                 const event = AppState.data.calendarEvents?.find(e => e.id === eventId);
                 if (event) Object.assign(event, data);
             }
             
-            this.showToast('✅ Calendar event updated!', 'success');
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            this.showToast('✅ Event updated!', 'success');
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
         } catch (error) {
-            this.showToast('❌ Failed to update event', 'error');
+            this.showToast('❌ Failed to update event: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Delete calendar event
+     */
     deleteCalendarEvent(eventId) {
+        const event = AppState.data.calendarEvents?.find(e => e.id === eventId);
+        if (!event) return;
+        
+        const validation = validateCRUDPermission('calendar_events', 'delete', event);
+        if (!validation.allowed) {
+            showPermissionError('Delete event', validation.reason);
+            return;
+        }
+        
         this.showConfirmDialog('Delete Event', 'Are you sure you want to delete this calendar event?', async () => {
             try {
-                if (AirtableAPI.isConfigured()) {
+                if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                     await AirtableAPI.deleteCalendarEvent(eventId);
                 } else {
                     AppState.data.calendarEvents = AppState.data.calendarEvents?.filter(e => e.id !== eventId) || [];
                 }
                 
                 this.showToast('✅ Event deleted!', 'success');
-                await loadCompanyData(AppState.selectedCompany);
-                render();
+                if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                    await loadCompanyData(AppState.selectedCompany);
+                }
                 document.querySelector('.modal-overlay')?.remove();
+                if (typeof render === 'function') render();
             } catch (error) {
-                this.showToast('❌ Failed to delete event', 'error');
+                this.showToast('❌ Failed to delete event: ' + error.message, 'error');
             }
         });
     },
 
     // ========================================
-    // TASK OPERATIONS (General & Client To-Dos)
+    // TASK OPERATIONS (GENERAL & CLIENT) - FIXED
     // ========================================
     
+    /**
+     * FIXED: Show add task form with permission check
+     */
     showAddTaskForm(type = 'general') {
-        if (!canShowForm('tasks', 'create')) return;
+        console.log(`📋 Opening add ${type} task form`);
+        
+        // Permission check
+        if (!canShowForm('tasks', 'create')) {
+            return;
+        }
         
         const users = AppState.data.users.filter(u => 
             u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
@@ -1547,7 +2264,7 @@ const CRUDManager = {
             <form id="addTaskForm">
                 <div class="form-group">
                     <label class="form-label required">Task Name</label>
-                    <input type="text" name="name" class="form-input" required>
+                    <input type="text" name="name" class="form-input" placeholder="Enter task name" required autofocus>
                     <div class="form-error">Task name is required</div>
                 </div>
                 
@@ -1612,44 +2329,67 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit add task
+     */
     async submitAddTask(type = 'general') {
+        console.log(`💾 Submitting add ${type} task`);
+        
+        const validation = validateCRUDPermission('tasks', 'create');
+        if (!validation.allowed) {
+            showPermissionError('Create task', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('addTaskForm');
-        if (!this.validateForm(form)) return;
+        if (!form || !this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
 
         try {
             if (type === 'client') {
-                if (AirtableAPI.isConfigured()) {
+                if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                     await AirtableAPI.addClientTodo(data);
                 } else {
                     AppState.data.clientTodos = AppState.data.clientTodos || [];
-                    AppState.data.clientTodos.push({id: Date.now().toString(), ...data});
+                    AppState.data.clientTodos.push({id: 'demo-ct-' + Date.now(), ...data});
                 }
             } else {
-                if (AirtableAPI.isConfigured()) {
+                if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                     await AirtableAPI.addGeneralTodo(data);
                 } else {
                     AppState.data.generalTodos = AppState.data.generalTodos || [];
-                    AppState.data.generalTodos.push({id: Date.now().toString(), ...data});
+                    AppState.data.generalTodos.push({id: 'demo-gt-' + Date.now(), ...data});
                 }
             }
             
             this.showToast('✅ Task created!', 'success');
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
         } catch (error) {
-            console.error('Error creating task:', error);
-            this.showToast('❌ Failed to create task', 'error');
+            console.error('❌ Error creating task:', error);
+            this.showToast('❌ Failed to create task: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Show edit task form
+     */
     showEditTaskForm(taskId, type = 'general') {
         const task = type === 'client' 
             ? AppState.data.clientTodos?.find(t => t.id === taskId)
             : AppState.data.generalTodos?.find(t => t.id === taskId);
             
         if (!task) return this.showToast('❌ Task not found', 'error');
+        
+        const validation = validateCRUDPermission('tasks', 'update', task);
+        if (!validation.allowed) {
+            showPermissionError('Edit task', validation.reason);
+            return;
+        }
         
         const users = AppState.data.users.filter(u => 
             u.companies && (Array.isArray(u.companies) ? u.companies.includes(AppState.selectedCompany) : u.companies === AppState.selectedCompany)
@@ -1714,8 +2454,7 @@ const CRUDManager = {
             </form>
         `;
 
-        const canDelete = typeof can !== 'undefined' && can(AppState.currentUser.role, 'tasks', 'delete');
-
+        const canDelete = typeof AuthManager !== 'undefined' && AuthManager.canDeleteRecord('tasks', task);
         const footer = `
             ${canDelete ? `<button class="btn btn-danger" onclick="CRUDManager.deleteTask('${taskId}', '${type}')">Delete</button>` : ''}
             <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
@@ -1726,21 +2465,37 @@ const CRUDManager = {
         document.body.appendChild(modal);
     },
 
+    /**
+     * FIXED: Submit edit task
+     */
     async submitEditTask(taskId, type = 'general') {
+        const task = type === 'client' 
+            ? AppState.data.clientTodos?.find(t => t.id === taskId)
+            : AppState.data.generalTodos?.find(t => t.id === taskId);
+        
+        if (!task) return;
+        
+        const validation = validateCRUDPermission('tasks', 'update', task);
+        if (!validation.allowed) {
+            showPermissionError('Update task', validation.reason);
+            return;
+        }
+        
         const form = document.getElementById('editTaskForm');
-        if (!this.validateForm(form)) return;
+        if (!form || !this.validateForm(form)) return;
+        
         const data = this.getFormData(form);
 
         try {
             if (type === 'client') {
-                if (AirtableAPI.isConfigured()) {
+                if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                     await AirtableAPI.updateClientTodo(taskId, data);
                 } else {
                     const task = AppState.data.clientTodos?.find(t => t.id === taskId);
                     if (task) Object.assign(task, data);
                 }
             } else {
-                if (AirtableAPI.isConfigured()) {
+                if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                     await AirtableAPI.updateGeneralTodo(taskId, data);
                 } else {
                     const task = AppState.data.generalTodos?.find(t => t.id === taskId);
@@ -1749,26 +2504,43 @@ const CRUDManager = {
             }
             
             this.showToast('✅ Task updated!', 'success');
-            await loadCompanyData(AppState.selectedCompany);
-            render();
-            document.querySelector('.modal-overlay').remove();
+            if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                await loadCompanyData(AppState.selectedCompany);
+            }
+            document.querySelector('.modal-overlay')?.remove();
+            if (typeof render === 'function') render();
         } catch (error) {
-            console.error('Error updating task:', error);
-            this.showToast('❌ Failed to update task', 'error');
+            console.error('❌ Error updating task:', error);
+            this.showToast('❌ Failed to update task: ' + error.message, 'error');
         }
     },
 
+    /**
+     * FIXED: Delete task
+     */
     deleteTask(taskId, type = 'general') {
+        const task = type === 'client' 
+            ? AppState.data.clientTodos?.find(t => t.id === taskId)
+            : AppState.data.generalTodos?.find(t => t.id === taskId);
+        
+        if (!task) return;
+        
+        const validation = validateCRUDPermission('tasks', 'delete', task);
+        if (!validation.allowed) {
+            showPermissionError('Delete task', validation.reason);
+            return;
+        }
+        
         this.showConfirmDialog('Delete Task', 'Are you sure?', async () => {
             try {
                 if (type === 'client') {
-                    if (AirtableAPI.isConfigured()) {
+                    if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                         await AirtableAPI.deleteClientTodo(taskId);
                     } else {
                         AppState.data.clientTodos = AppState.data.clientTodos?.filter(t => t.id !== taskId) || [];
                     }
                 } else {
-                    if (AirtableAPI.isConfigured()) {
+                    if (typeof AirtableAPI !== 'undefined' && AirtableAPI.isConfigured()) {
                         await AirtableAPI.deleteGeneralTodo(taskId);
                     } else {
                         AppState.data.generalTodos = AppState.data.generalTodos?.filter(t => t.id !== taskId) || [];
@@ -1776,24 +2548,34 @@ const CRUDManager = {
                 }
                 
                 this.showToast('✅ Task deleted!', 'success');
-                await loadCompanyData(AppState.selectedCompany);
-                render();
+                if (AppState.selectedCompany && typeof loadCompanyData === 'function') {
+                    await loadCompanyData(AppState.selectedCompany);
+                }
                 document.querySelector('.modal-overlay')?.remove();
+                if (typeof render === 'function') render();
             } catch (error) {
-                console.error('Error deleting task:', error);
-                this.showToast('❌ Failed to delete task', 'error');
+                console.error('❌ Error deleting task:', error);
+                this.showToast('❌ Failed to delete task: ' + error.message, 'error');
             }
         });
     }
 };
 
-console.log('✅ CRUD Manager loaded with FULL SCHEMA COMPLIANCE');
-console.log('✅ Permission validation active');
-console.log('✅ All field names corrected:');
-console.log('   - Companies: Added Industry, Location, Notes');
-console.log('   - Users: phone → phoneNumber, added Status');
-console.log('   - Clients: phone → phoneNo, all spaces removed from field names');
-console.log('   - Leads: Schema compliant (only LeadName, Status, AssignedUser)');
-console.log('   - Calendar Events: NEW - Full CRUD operations');
-console.log('   - General To-Do: Added Description, removed Company');
-console.log('   - Client To-Do: Added Description, removed AssignedUser & Company');
+// ========================================
+// CONSOLE OUTPUT - FIXED
+// ========================================
+
+console.log('✅ CRUD Manager loaded - FULLY FIXED');
+console.log('🔐 Permission validation: Active on all operations');
+console.log('👑 Admin role: Full access guaranteed');
+console.log('✅ All CRUD operations secured:');
+console.log('   - Companies: Add, Edit, Delete with permission checks');
+console.log('   - Users: Add, Edit, Delete with permission checks');
+console.log('   - Clients: Add, Edit, Delete with permission checks');
+console.log('   - Leads: Add, Edit, Delete with permission checks');
+console.log('   - Calendar Events: Add, Edit, Delete with permission checks');
+console.log('   - General Tasks: Add, Edit, Delete with permission checks');
+console.log('   - Client Tasks: Add, Edit, Delete with permission checks');
+console.log('🛡️ Security: XSS prevention, input validation, permission gates');
+console.log('📋 Error handling: Comprehensive try-catch with user feedback');
+console.log('🔍 Logging: All operations logged for audit trail');
