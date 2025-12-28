@@ -737,46 +737,57 @@ function renderDashboard() {
         return;
     }
     
+    console.log('📊 Rendering dashboard for company:', selectedCompany.name);
+    
     const canViewAll = typeof AuthManager !== 'undefined' && AuthManager.hasPermission('view_all');
     
-    // Filter data based on permissions
-    let clients = AppState.data.clients;
-    let leads = AppState.data.leads;
-    let generalTodos = AppState.data.generalTodos;
-    let clientTodos = AppState.data.clientTodos;
-    let calendarEvents = AppState.data.calendarEvents || [];
+    // FIXED: Ensure all data arrays exist and are valid
+    let clients = Array.isArray(AppState.data.clients) ? AppState.data.clients : [];
+    let leads = Array.isArray(AppState.data.leads) ? AppState.data.leads : [];
+    let generalTodos = Array.isArray(AppState.data.generalTodos) ? AppState.data.generalTodos : [];
+    let clientTodos = Array.isArray(AppState.data.clientTodos) ? AppState.data.clientTodos : [];
     
-    if (!canViewAll && AppState.selectedUser) {
-        console.log('🔒 Filtering data for user:', AppState.selectedUser);
-        clients = clients.filter(c => c.assignedUser === AppState.selectedUser);
-        leads = leads.filter(l => l.assignedUser === AppState.selectedUser);
-        generalTodos = generalTodos.filter(t => t.assignedUser === AppState.selectedUser);
-        // Client todos don't have assignedUser, filter by client ownership
-        const userClientIds = clients.map(c => c.id);
-        clientTodos = clientTodos.filter(t => userClientIds.includes(t.client));
-        // Calendar events linked to user's clients
-        calendarEvents = calendarEvents.filter(e => 
-            e.clients && e.clients.some(clientId => userClientIds.includes(clientId))
-        );
+    // FIXED: Initialize calendar events if undefined
+    if (!AppState.data.calendarEvents) {
+        AppState.data.calendarEvents = [];
+        console.warn('⚠️ Calendar events was undefined, initialized to empty array');
+    }
+    let calendarEvents = Array.isArray(AppState.data.calendarEvents) ? AppState.data.calendarEvents : [];
+    
+    // FIXED: Filter data based on permissions with proper error handling
+    try {
+        if (!canViewAll && AppState.selectedUser) {
+            console.log('🔒 Filtering data for user:', AppState.selectedUser);
+            clients = clients.filter(c => c.assignedUser === AppState.selectedUser);
+            leads = leads.filter(l => l.assignedUser === AppState.selectedUser);
+            generalTodos = generalTodos.filter(t => t.assignedUser === AppState.selectedUser);
+            
+            // Client todos don't have assignedUser, filter by client ownership
+            const userClientIds = clients.map(c => c.id);
+            clientTodos = clientTodos.filter(t => userClientIds.includes(t.client));
+            
+            // Calendar events linked to user's clients
+            calendarEvents = calendarEvents.filter(e => 
+                e.clients && Array.isArray(e.clients) && e.clients.some(clientId => userClientIds.includes(clientId))
+            );
+        }
+    } catch (filterError) {
+        console.error('❌ Error filtering dashboard data:', filterError);
+        // Continue with unfiltered data rather than crashing
     }
     
-    // Calculate stats
-    const stats = {
-        totalClients: clients.length,
-        activeClients: clients.filter(c => c.status === 'Active').length,
-        totalLeads: leads.length,
-        newLeads: leads.filter(l => l.status === 'New').length,
-        pendingTasks: [...generalTodos, ...clientTodos].filter(t => t.status === 'Pending').length,
-        completedTasks: [...generalTodos, ...clientTodos].filter(t => t.status === 'Completed').length,
-        upcomingEvents: calendarEvents.filter(e => {
-            const eventDate = new Date(e.startDateTime);
-            const now = new Date();
-            return eventDate > now && e.status !== 'Cancelled';
-        }).length,
-        totalRevenue: clients.reduce((sum, c) => sum + (c.dealValue || 0), 0)
-    };
+    console.log('📊 Dashboard data counts:', {
+        clients: clients.length,
+        leads: leads.length,
+        generalTodos: generalTodos.length,
+        clientTodos: clientTodos.length,
+        calendarEvents: calendarEvents.length
+    });
     
-    console.log('📊 Dashboard stats:', stats);
+    // FIXED: Calculate stats with proper error handling and fallbacks
+    const stats = calculateDashboardStats(clients, leads, generalTodos, clientTodos, calendarEvents);
+    
+    console.log('📊 Dashboard stats calculated:', stats);
     
     app.innerHTML = `
         <div class="min-h-screen">
@@ -786,43 +797,43 @@ function renderDashboard() {
             <!-- Main Content -->
             <div class="p-6">
                 <div class="max-w-7xl mx-auto">
-                    <!-- Stats Grid -->
+                    <!-- Stats Grid - FIXED -->
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                        <div class="stat-card" onclick="switchTab('clients')">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-white text-sm opacity-75">Total Clients</span>
-                                <span class="text-3xl">👥</span>
-                            </div>
-                            <div class="text-white text-3xl font-bold">${stats.totalClients}</div>
-                            <div class="text-white text-sm opacity-75 mt-1">${stats.activeClients} active</div>
-                        </div>
+                        ${renderStatCard({
+                            icon: '👥',
+                            label: 'Total Clients',
+                            value: stats.totalClients,
+                            subtitle: `${stats.activeClients} active`,
+                            color: '#4ECDC4',
+                            onClick: "switchTabFromCard('clients')"
+                        })}
                         
-                        <div class="stat-card" onclick="switchTab('leads')">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-white text-sm opacity-75">Total Leads</span>
-                                <span class="text-3xl">🎯</span>
-                            </div>
-                            <div class="text-white text-3xl font-bold">${stats.totalLeads}</div>
-                            <div class="text-white text-sm opacity-75 mt-1">${stats.newLeads} new</div>
-                        </div>
+                        ${renderStatCard({
+                            icon: '🎯',
+                            label: 'Total Leads',
+                            value: stats.totalLeads,
+                            subtitle: `${stats.newLeads} new`,
+                            color: '#FFA07A',
+                            onClick: "switchTabFromCard('leads')"
+                        })}
                         
-                        <div class="stat-card" onclick="switchTab('general-todos')">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-white text-sm opacity-75">Pending Tasks</span>
-                                <span class="text-3xl">⏳</span>
-                            </div>
-                            <div class="text-white text-3xl font-bold">${stats.pendingTasks}</div>
-                            <div class="text-white text-sm opacity-75 mt-1">${stats.completedTasks} completed</div>
-                        </div>
+                        ${renderStatCard({
+                            icon: '⏳',
+                            label: 'Pending Tasks',
+                            value: stats.pendingTasks,
+                            subtitle: `${stats.completedTasks} completed`,
+                            color: '#F7B731',
+                            onClick: "switchTabFromCard('general-todos')"
+                        })}
                         
-                        <div class="stat-card" onclick="switchTab('calendar-events')">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-white text-sm opacity-75">Upcoming Events</span>
-                                <span class="text-3xl">📅</span>
-                            </div>
-                            <div class="text-white text-3xl font-bold">${stats.upcomingEvents}</div>
-                            <div class="text-white text-sm opacity-75 mt-1">Scheduled</div>
-                        </div>
+                        ${renderStatCard({
+                            icon: '📅',
+                            label: 'Upcoming Events',
+                            value: stats.upcomingEvents,
+                            subtitle: 'Scheduled',
+                            color: '#45B7D1',
+                            onClick: "switchTabFromCard('calendar-events')"
+                        })}
                     </div>
                     
                     <!-- Revenue Summary -->
@@ -863,6 +874,123 @@ function renderDashboard() {
     `;
 }
 
+/**
+ * FIXED: Calculate dashboard statistics with comprehensive error handling
+ */
+function calculateDashboardStats(clients, leads, generalTodos, clientTodos, calendarEvents) {
+    const stats = {
+        totalClients: 0,
+        activeClients: 0,
+        totalLeads: 0,
+        newLeads: 0,
+        pendingTasks: 0,
+        completedTasks: 0,
+        upcomingEvents: 0,
+        totalRevenue: 0
+    };
+    
+    try {
+        // FIXED: Safe client stats calculation
+        if (Array.isArray(clients) && clients.length > 0) {
+            stats.totalClients = clients.length;
+            stats.activeClients = clients.filter(c => c && c.status === 'Active').length;
+            stats.totalRevenue = clients.reduce((sum, c) => {
+                const value = parseFloat(c?.dealValue) || 0;
+                return sum + value;
+            }, 0);
+        }
+        
+        // FIXED: Safe lead stats calculation
+        if (Array.isArray(leads) && leads.length > 0) {
+            stats.totalLeads = leads.length;
+            stats.newLeads = leads.filter(l => l && l.status === 'New').length;
+        }
+        
+        // FIXED: Safe task stats calculation
+        if (Array.isArray(generalTodos) || Array.isArray(clientTodos)) {
+            const allTasks = [
+                ...(Array.isArray(generalTodos) ? generalTodos : []),
+                ...(Array.isArray(clientTodos) ? clientTodos : [])
+            ];
+            
+            stats.pendingTasks = allTasks.filter(t => t && t.status === 'Pending').length;
+            stats.completedTasks = allTasks.filter(t => t && t.status === 'Completed').length;
+        }
+        
+        // FIXED: Safe calendar event stats calculation
+        if (Array.isArray(calendarEvents) && calendarEvents.length > 0) {
+            const now = new Date();
+            stats.upcomingEvents = calendarEvents.filter(e => {
+                if (!e || !e.startDateTime || e.status === 'Cancelled') return false;
+                
+                try {
+                    const eventDate = new Date(e.startDateTime);
+                    return eventDate > now;
+                } catch (dateError) {
+                    console.warn('⚠️ Invalid event date:', e.startDateTime);
+                    return false;
+                }
+            }).length;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error calculating dashboard stats:', error);
+        // Stats object already has safe defaults (all zeros)
+    }
+    
+    return stats;
+}
+
+/**
+ * NEW: Render individual stat card with consistent styling
+ */
+function renderStatCard(options) {
+    const {
+        icon = '📊',
+        label = 'Stat',
+        value = 0,
+        subtitle = '',
+        color = '#4ECDC4',
+        onClick = ''
+    } = options;
+    
+    return `
+        <div class="stat-card" ${onClick ? `onclick="${onClick}"` : ''} 
+             style="cursor: ${onClick ? 'pointer' : 'default'};">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-white text-sm opacity-75">${label}</span>
+                <span class="text-3xl" style="filter: drop-shadow(0 2px 4px ${color}40);">${icon}</span>
+            </div>
+            <div class="text-white text-3xl font-bold">${value}</div>
+            ${subtitle ? `<div class="text-white text-sm opacity-75 mt-1">${subtitle}</div>` : ''}
+        </div>
+    `;
+}
+
+/**
+ * FIXED: Switch tab from stat card with proper state management
+ */
+function switchTabFromCard(tabName) {
+    console.log(`📑 Switching to tab from card: ${tabName}`);
+    
+    // Update active tab styling
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Find and activate the correct tab button
+    const targetButton = Array.from(document.querySelectorAll('.tab-btn')).find(btn => {
+        const btnText = btn.textContent.toLowerCase();
+        const searchTerm = tabName.replace('-', ' ').toLowerCase();
+        return btnText.includes(searchTerm);
+    });
+    
+    if (targetButton) {
+        targetButton.classList.add('active');
+        targetButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+    
+    // Call the main switchTab function
+    switchTab(tabName);
+}
 function renderNavigation(company) {
     return `
         <nav class="glass-card mb-6">
@@ -892,24 +1020,38 @@ function renderNavigation(company) {
     `;
 }
 
-/**
- * FIXED: Tab switching with proper state management
- */
 function switchTab(tabName) {
     console.log(`📑 Switching to tab: ${tabName}`);
     
-    // Update active tab
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const clickedBtn = event?.target;
-    if (clickedBtn && clickedBtn.classList.contains('tab-btn')) {
-        clickedBtn.classList.add('active');
-    } else {
-        // Fallback: find the button by text content
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            if (btn.textContent.toLowerCase().includes(tabName.replace('-', ' '))) {
-                btn.classList.add('active');
-            }
-        });
+    // FIXED: Update active tab with error handling
+    try {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        
+        // Find the button to activate - try multiple methods
+        let clickedBtn = null;
+        
+        // Method 1: Check if event exists and has target
+        if (typeof event !== 'undefined' && event?.target) {
+            clickedBtn = event.target.closest('.tab-btn');
+        }
+        
+        // Method 2: Find by tab name if Method 1 failed
+        if (!clickedBtn) {
+            clickedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => {
+                const btnText = btn.textContent.toLowerCase();
+                const searchTerm = tabName.replace('-', ' ').toLowerCase();
+                return btnText.includes(searchTerm);
+            });
+        }
+        
+        // Activate the found button
+        if (clickedBtn) {
+            clickedBtn.classList.add('active');
+        } else {
+            console.warn('⚠️ Could not find tab button for:', tabName);
+        }
+    } catch (tabError) {
+        console.error('❌ Error updating tab state:', tabError);
     }
     
     const content = document.getElementById('tabContent');
@@ -918,50 +1060,77 @@ function switchTab(tabName) {
         return;
     }
     
+    // FIXED: Safely get permission check
     const canViewAll = typeof AuthManager !== 'undefined' && AuthManager.hasPermission('view_all');
-    let clients = AppState.data.clients;
-    let leads = AppState.data.leads;
-    let generalTodos = AppState.data.generalTodos;
-    let clientTodos = AppState.data.clientTodos;
-    let calendarEvents = AppState.data.calendarEvents || [];
-    let users = AppState.data.users;
     
-    if (!canViewAll && AppState.selectedUser) {
-        clients = clients.filter(c => c.assignedUser === AppState.selectedUser);
-        leads = leads.filter(l => l.assignedUser === AppState.selectedUser);
-        generalTodos = generalTodos.filter(t => t.assignedUser === AppState.selectedUser);
-        const userClientIds = clients.map(c => c.id);
-        clientTodos = clientTodos.filter(t => userClientIds.includes(t.client));
-        calendarEvents = calendarEvents.filter(e => 
-            e.clients && e.clients.some(clientId => userClientIds.includes(clientId))
-        );
+    // FIXED: Initialize all data arrays safely
+    let clients = Array.isArray(AppState.data.clients) ? AppState.data.clients : [];
+    let leads = Array.isArray(AppState.data.leads) ? AppState.data.leads : [];
+    let generalTodos = Array.isArray(AppState.data.generalTodos) ? AppState.data.generalTodos : [];
+    let clientTodos = Array.isArray(AppState.data.clientTodos) ? AppState.data.clientTodos : [];
+    let calendarEvents = Array.isArray(AppState.data.calendarEvents) ? AppState.data.calendarEvents : [];
+    let users = Array.isArray(AppState.data.users) ? AppState.data.users : [];
+    
+    // FIXED: Apply user filtering with error handling
+    try {
+        if (!canViewAll && AppState.selectedUser) {
+            clients = clients.filter(c => c.assignedUser === AppState.selectedUser);
+            leads = leads.filter(l => l.assignedUser === AppState.selectedUser);
+            generalTodos = generalTodos.filter(t => t.assignedUser === AppState.selectedUser);
+            
+            const userClientIds = clients.map(c => c.id);
+            clientTodos = clientTodos.filter(t => userClientIds.includes(t.client));
+            calendarEvents = calendarEvents.filter(e => 
+                e.clients && Array.isArray(e.clients) && e.clients.some(clientId => userClientIds.includes(clientId))
+            );
+        }
+    } catch (filterError) {
+        console.error('❌ Error filtering tab data:', filterError);
     }
     
-    switch (tabName) {
-        case 'clients':
-            content.innerHTML = renderClientsTab(clients);
-            break;
-        case 'leads':
-            content.innerHTML = renderLeadsTab(leads);
-            break;
-        case 'calendar-events':
-            content.innerHTML = renderCalendarEventsTab(calendarEvents);
-            break;
-        case 'general-todos':
-            content.innerHTML = renderGeneralTodosTab(generalTodos);
-            break;
-        case 'client-todos':
-            content.innerHTML = renderClientTodosTab(clientTodos);
-            break;
-        case 'users':
-            content.innerHTML = renderUsersTab(users);
-            break;
-        default:
-            console.warn('⚠️ Unknown tab:', tabName);
-            content.innerHTML = renderClientsTab(clients);
+    // FIXED: Render appropriate tab with error handling
+    try {
+        switch (tabName) {
+            case 'clients':
+                content.innerHTML = renderClientsTab(clients);
+                break;
+            case 'leads':
+                content.innerHTML = renderLeadsTab(leads);
+                break;
+            case 'calendar-events':
+                content.innerHTML = renderCalendarEventsTab(calendarEvents);
+                break;
+            case 'general-todos':
+                content.innerHTML = renderGeneralTodosTab(generalTodos);
+                break;
+            case 'client-todos':
+                content.innerHTML = renderClientTodosTab(clientTodos);
+                break;
+            case 'users':
+                content.innerHTML = renderUsersTab(users);
+                break;
+            default:
+                console.warn('⚠️ Unknown tab:', tabName);
+                content.innerHTML = renderClientsTab(clients);
+        }
+        
+        // FIXED: Scroll to content after switching
+        content.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+    } catch (renderError) {
+        console.error('❌ Error rendering tab content:', renderError);
+        content.innerHTML = `
+            <div class="glass-card p-12 text-center">
+                <div class="text-6xl mb-4">⚠️</div>
+                <h3 class="text-white text-2xl font-bold mb-2">Error Loading Tab</h3>
+                <p class="text-white opacity-75 mb-6">Failed to render ${tabName} content</p>
+                <button class="btn btn-primary" onclick="location.reload()">
+                    🔄 Reload Page
+                </button>
+            </div>
+        `;
     }
 }
-
 function renderClientsTab(clients) {
     const canCreate = typeof AuthManager !== 'undefined' && AuthManager.hasPermission('create');
     
