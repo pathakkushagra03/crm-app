@@ -1,11 +1,72 @@
 // ===================================================================
 // FILE: js/crud.js
 // PURPOSE: Task CRUD operations with comprehensive error handling
-// DEPENDENCIES: GlobalErrorHandler, storage operations, DOM manipulation
+// DEPENDENCIES: GlobalErrorHandler (optional), storage operations, DOM manipulation
 // ===================================================================
 
 // ===================================================================
-// PART 1: Core CRUD Functions with Error Protection
+// PART 1: Defensive Wrappers for Dependencies
+// ===================================================================
+
+/**
+ * Safe wrapper for GlobalErrorHandler.handle()
+ * Falls back to console logging if GlobalErrorHandler unavailable
+ */
+function safeHandleError(error, options = {}) {
+    try {
+        if (typeof GlobalErrorHandler !== 'undefined' && GlobalErrorHandler && typeof GlobalErrorHandler.handle === 'function') {
+            GlobalErrorHandler.handle(error, options);
+        } else {
+            // Fallback: log to console if GlobalErrorHandler not available
+            console.error(`[CRUD ERROR] ${options.context || 'Unknown'}:`, error);
+            if (options.userMessage && !options.silent) {
+                console.warn(`[CRUD USER MESSAGE] ${options.userMessage}`);
+            }
+            if (options.metadata) {
+                console.info('[CRUD METADATA]', options.metadata);
+            }
+        }
+    } catch (handlerError) {
+        // Ultimate fallback: basic console error
+        console.error('[CRUD] Error handler failed:', handlerError);
+        console.error('[CRUD] Original error:', error);
+    }
+}
+
+/**
+ * Safe wrapper for logActivity()
+ * Prevents crashes if activity.js not loaded
+ */
+function safeLogActivity(activityType, task, originalTask = null) {
+    try {
+        if (typeof logActivity === 'function') {
+            logActivity(activityType, task, originalTask);
+        } else {
+            console.warn('[CRUD] logActivity function not available, skipping activity log');
+        }
+    } catch (error) {
+        console.warn('[CRUD] Failed to log activity:', error.message);
+        // Don't propagate - activity logging should never break CRUD operations
+    }
+}
+
+/**
+ * Check if localStorage is available and functional
+ * @returns {boolean} True if localStorage can be used
+ */
+function isLocalStorageAvailable() {
+    try {
+        const testKey = '__crud_storage_test__';
+        localStorage.setItem(testKey, 'test');
+        localStorage.removeItem(testKey);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+// ===================================================================
+// PART 2: Core CRUD Functions with Enhanced Error Protection
 // ===================================================================
 
 /**
@@ -14,6 +75,11 @@
  */
 function loadTasks() {
     try {
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available (may be disabled in private browsing mode)');
+        }
+
         const tasksJSON = localStorage.getItem('tasks');
         
         if (!tasksJSON) {
@@ -25,18 +91,29 @@ function loadTasks() {
         
         // Validate parsed data
         if (!Array.isArray(tasks)) {
-            throw new Error('Invalid tasks data structure: expected array');
+            throw new Error('Invalid tasks data structure: expected array, got ' + typeof tasks);
         }
 
         console.log(`[CRUD] Successfully loaded ${tasks.length} tasks`);
         return tasks;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        const isStorageIssue = error.message.includes('localStorage') || 
+                               error.name === 'QuotaExceededError' ||
+                               error.name === 'SecurityError';
+
+        safeHandleError(error, {
             context: 'loadTasks',
-            userMessage: 'Unable to load your tasks. Starting with a fresh task list.',
+            userMessage: isStorageIssue 
+                ? 'Unable to access browser storage. Please check your privacy settings or try a different browser.'
+                : 'Unable to load your tasks. Starting with a fresh task list.',
             severity: 'medium',
-            silent: false
+            silent: false,
+            metadata: {
+                errorType: error.name,
+                storageAvailable: isLocalStorageAvailable(),
+                isStorageIssue: isStorageIssue
+            }
         });
         
         // Return empty array as safe fallback
@@ -53,32 +130,60 @@ function saveTasks(tasks) {
     try {
         // Validate input
         if (!Array.isArray(tasks)) {
-            throw new Error('saveTasks: Invalid input - tasks must be an array');
+            throw new Error('saveTasks: Invalid input - tasks must be an array, got ' + typeof tasks);
+        }
+
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available (may be disabled in private browsing mode)');
         }
 
         // Validate each task object
         for (let i = 0; i < tasks.length; i++) {
             const task = tasks[i];
-            if (!task.id || !task.text || !task.category) {
+            if (!task || typeof task !== 'object') {
+                console.warn(`[CRUD] Task at index ${i} is not a valid object:`, task);
+            } else if (!task.id || !task.text || !task.category) {
                 console.warn(`[CRUD] Task at index ${i} missing required fields:`, task);
             }
         }
 
         const tasksJSON = JSON.stringify(tasks);
+        
+        // Check if data size is reasonable (localStorage typically 5-10MB limit)
+        const dataSize = new Blob([tasksJSON]).size;
+        if (dataSize > 4000000) { // Warn at 4MB
+            console.warn(`[CRUD] Task data size is large (${Math.round(dataSize / 1024)}KB), approaching storage limits`);
+        }
+
         localStorage.setItem('tasks', tasksJSON);
         
-        console.log(`[CRUD] Successfully saved ${tasks.length} tasks to storage`);
+        console.log(`[CRUD] Successfully saved ${tasks.length} tasks to storage (${Math.round(dataSize / 1024)}KB)`);
         return true;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        const isQuotaError = error.name === 'QuotaExceededError';
+        const isStorageIssue = error.message.includes('localStorage') || 
+                               error.name === 'SecurityError' ||
+                               isQuotaError;
+
+        let userMessage = 'Unable to save your tasks. Your changes may not be preserved.';
+        if (isQuotaError) {
+            userMessage = 'Storage quota exceeded. Please delete some completed tasks or export your data.';
+        } else if (isStorageIssue) {
+            userMessage = 'Unable to access browser storage. Your changes cannot be saved. Check privacy settings.';
+        }
+
+        safeHandleError(error, {
             context: 'saveTasks',
-            userMessage: 'Unable to save your tasks. Your changes may not be preserved.',
+            userMessage: userMessage,
             severity: 'high',
             silent: false,
             metadata: {
                 taskCount: Array.isArray(tasks) ? tasks.length : 'invalid',
-                storageAvailable: typeof localStorage !== 'undefined'
+                storageAvailable: isLocalStorageAvailable(),
+                errorType: error.name,
+                isQuotaError: isQuotaError
             }
         });
         
@@ -137,7 +242,7 @@ function addTask(text, category, priority, dueDate = null) {
 
         // Create new task object
         const newTask = {
-            id: Date.now().toString(),
+            id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9),
             text: trimmedText,
             category: category,
             priority: priority,
@@ -159,25 +264,23 @@ function addTask(text, category, priority, dueDate = null) {
         console.log('[CRUD] Task added successfully:', newTask.id);
         
         // Log activity with error protection
-        try {
-            logActivity('add', newTask);
-        } catch (activityError) {
-            console.warn('[CRUD] Failed to log activity:', activityError);
-            // Don't fail the entire operation if activity logging fails
-        }
+        safeLogActivity('add', newTask);
 
         return newTask;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'addTask',
-            userMessage: 'Unable to add task. Please check your input and try again.',
+            userMessage: 'Unable to add task. ' + (error.message.includes('storage') 
+                ? 'Storage is unavailable.' 
+                : 'Please check your input and try again.'),
             severity: 'medium',
             silent: false,
             metadata: {
                 textLength: text ? text.length : 0,
                 category: category,
-                priority: priority
+                priority: priority,
+                storageAvailable: isLocalStorageAvailable()
             }
         });
         
@@ -198,8 +301,17 @@ function updateTask(taskId, updates) {
             throw new Error('Valid task ID is required');
         }
 
-        if (!updates || typeof updates !== 'object') {
-            throw new Error('Updates object is required');
+        if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+            throw new Error('Updates must be a valid object');
+        }
+
+        if (Object.keys(updates).length === 0) {
+            throw new Error('Updates object cannot be empty');
+        }
+
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available');
         }
 
         // Load existing tasks
@@ -269,23 +381,24 @@ function updateTask(taskId, updates) {
         console.log('[CRUD] Task updated successfully:', taskId);
 
         // Log activity with error protection
-        try {
-            logActivity('update', tasks[taskIndex], originalTask);
-        } catch (activityError) {
-            console.warn('[CRUD] Failed to log activity:', activityError);
-        }
+        safeLogActivity('update', tasks[taskIndex], originalTask);
 
         return tasks[taskIndex];
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'updateTask',
-            userMessage: 'Unable to update task. Please try again.',
+            userMessage: 'Unable to update task. ' + (error.message.includes('not found') 
+                ? 'Task no longer exists.' 
+                : error.message.includes('storage') 
+                    ? 'Storage is unavailable.' 
+                    : 'Please try again.'),
             severity: 'medium',
             silent: false,
             metadata: {
                 taskId: taskId,
-                updateFields: updates ? Object.keys(updates) : []
+                updateFields: updates ? Object.keys(updates) : [],
+                storageAvailable: isLocalStorageAvailable()
             }
         });
         
@@ -303,6 +416,11 @@ function deleteTask(taskId) {
         // Validate input
         if (!taskId || typeof taskId !== 'string') {
             throw new Error('Valid task ID is required');
+        }
+
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available');
         }
 
         // Load existing tasks
@@ -329,22 +447,23 @@ function deleteTask(taskId) {
         console.log('[CRUD] Task deleted successfully:', taskId);
 
         // Log activity with error protection
-        try {
-            logActivity('delete', deletedTask);
-        } catch (activityError) {
-            console.warn('[CRUD] Failed to log activity:', activityError);
-        }
+        safeLogActivity('delete', deletedTask);
 
         return true;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'deleteTask',
-            userMessage: 'Unable to delete task. Please try again.',
+            userMessage: 'Unable to delete task. ' + (error.message.includes('not found') 
+                ? 'Task no longer exists.' 
+                : error.message.includes('storage') 
+                    ? 'Storage is unavailable.' 
+                    : 'Please try again.'),
             severity: 'medium',
             silent: false,
             metadata: {
-                taskId: taskId
+                taskId: taskId,
+                storageAvailable: isLocalStorageAvailable()
             }
         });
         
@@ -362,6 +481,11 @@ function toggleTaskComplete(taskId) {
         // Validate input
         if (!taskId || typeof taskId !== 'string') {
             throw new Error('Valid task ID is required');
+        }
+
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available');
         }
 
         // Load existing tasks
@@ -389,23 +513,24 @@ function toggleTaskComplete(taskId) {
         console.log('[CRUD] Task completion toggled:', taskId, tasks[taskIndex].completed);
 
         // Log activity with error protection
-        try {
-            const activityType = tasks[taskIndex].completed ? 'complete' : 'uncomplete';
-            logActivity(activityType, tasks[taskIndex]);
-        } catch (activityError) {
-            console.warn('[CRUD] Failed to log activity:', activityError);
-        }
+        const activityType = tasks[taskIndex].completed ? 'complete' : 'uncomplete';
+        safeLogActivity(activityType, tasks[taskIndex]);
 
         return tasks[taskIndex];
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'toggleTaskComplete',
-            userMessage: 'Unable to update task status. Please try again.',
+            userMessage: 'Unable to update task status. ' + (error.message.includes('not found') 
+                ? 'Task no longer exists.' 
+                : error.message.includes('storage') 
+                    ? 'Storage is unavailable.' 
+                    : 'Please try again.'),
             severity: 'medium',
             silent: false,
             metadata: {
-                taskId: taskId
+                taskId: taskId,
+                storageAvailable: isLocalStorageAvailable()
             }
         });
         
@@ -439,13 +564,14 @@ function getTaskById(taskId) {
         return task;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'getTaskById',
             userMessage: 'Unable to retrieve task.',
             severity: 'low',
             silent: true,
             metadata: {
-                taskId: taskId
+                taskId: taskId,
+                storageAvailable: isLocalStorageAvailable()
             }
         });
         
@@ -460,6 +586,11 @@ function getTaskById(taskId) {
  */
 function getFilteredTasks(filters = {}) {
     try {
+        // Validate filters object
+        if (filters && typeof filters !== 'object') {
+            throw new Error('Filters must be an object');
+        }
+
         // Load all tasks
         let tasks = loadTasks();
 
@@ -484,7 +615,7 @@ function getFilteredTasks(filters = {}) {
             const searchLower = filters.search.toLowerCase().trim();
             if (searchLower.length > 0) {
                 tasks = tasks.filter(task => 
-                    task.text.toLowerCase().includes(searchLower)
+                    task.text && task.text.toLowerCase().includes(searchLower)
                 );
             }
         }
@@ -498,13 +629,14 @@ function getFilteredTasks(filters = {}) {
         return tasks;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'getFilteredTasks',
             userMessage: 'Unable to filter tasks. Showing all tasks.',
             severity: 'low',
             silent: true,
             metadata: {
-                filters: filters
+                filters: filters,
+                storageAvailable: isLocalStorageAvailable()
             }
         });
         
@@ -534,6 +666,11 @@ function deleteBatchTasks(taskIds) {
         if (taskIds.length === 0) {
             console.warn('[CRUD] No task IDs provided for batch deletion');
             return result;
+        }
+
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available');
         }
 
         // Load tasks
@@ -566,26 +703,25 @@ function deleteBatchTasks(taskIds) {
         console.log(`[CRUD] Batch deleted ${result.success} tasks`);
 
         // Log activity for each deleted task
-        try {
-            for (const task of deletedTasks) {
-                logActivity('delete', task);
-            }
-        } catch (activityError) {
-            console.warn('[CRUD] Failed to log batch deletion activity:', activityError);
+        for (const task of deletedTasks) {
+            safeLogActivity('delete', task);
         }
 
     } catch (error) {
         result.failed = taskIds ? taskIds.length : 0;
         result.errors.push(error.message);
 
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'deleteBatchTasks',
-            userMessage: 'Unable to delete all selected tasks. Some deletions may have failed.',
+            userMessage: 'Unable to delete all selected tasks. ' + (error.message.includes('storage') 
+                ? 'Storage is unavailable.' 
+                : 'Some deletions may have failed.'),
             severity: 'high',
             silent: false,
             metadata: {
                 taskCount: taskIds ? taskIds.length : 0,
-                successCount: result.success
+                successCount: result.success,
+                storageAvailable: isLocalStorageAvailable()
             }
         });
     }
@@ -599,6 +735,11 @@ function deleteBatchTasks(taskIds) {
  */
 function deleteCompletedTasks() {
     try {
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available');
+        }
+
         // Load tasks
         const tasks = loadTasks();
         
@@ -623,22 +764,23 @@ function deleteCompletedTasks() {
         console.log(`[CRUD] Deleted ${deletedCount} completed tasks`);
 
         // Log activity
-        try {
-            for (const task of completedTasks) {
-                logActivity('delete', task);
-            }
-        } catch (activityError) {
-            console.warn('[CRUD] Failed to log completed task deletion activity:', activityError);
+        for (const task of completedTasks) {
+            safeLogActivity('delete', task);
         }
 
         return deletedCount;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'deleteCompletedTasks',
-            userMessage: 'Unable to delete completed tasks. Please try again.',
+            userMessage: 'Unable to delete completed tasks. ' + (error.message.includes('storage') 
+                ? 'Storage is unavailable.' 
+                : 'Please try again.'),
             severity: 'medium',
-            silent: false
+            silent: false,
+            metadata: {
+                storageAvailable: isLocalStorageAvailable()
+            }
         });
         
         return -1;
@@ -675,6 +817,12 @@ function getTaskStats() {
 
         // Calculate statistics
         for (const task of tasks) {
+            // Validate task object
+            if (!task || typeof task !== 'object') {
+                console.warn('[CRUD] Invalid task object in statistics calculation:', task);
+                continue;
+            }
+
             // Completion status
             if (task.completed) {
                 stats.completed++;
@@ -696,12 +844,16 @@ function getTaskStats() {
             if (!task.completed && task.dueDate) {
                 try {
                     const dueDate = new Date(task.dueDate);
+                    if (isNaN(dueDate.getTime())) {
+                        console.warn('[CRUD] Invalid due date for task:', task.id);
+                        continue;
+                    }
                     dueDate.setHours(0, 0, 0, 0);
                     if (dueDate < now) {
                         stats.overdue++;
                     }
                 } catch (dateError) {
-                    console.warn('[CRUD] Invalid due date for task:', task.id, dateError);
+                    console.warn('[CRUD] Date parsing error for task:', task.id, dateError);
                 }
             }
         }
@@ -715,11 +867,14 @@ function getTaskStats() {
         return stats;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'getTaskStats',
             userMessage: 'Unable to calculate task statistics.',
             severity: 'low',
-            silent: true
+            silent: true,
+            metadata: {
+                storageAvailable: isLocalStorageAvailable()
+            }
         });
         
         return defaultStats;
@@ -737,11 +892,22 @@ function sortTasks(tasks, sortBy = 'date', order = 'desc') {
     try {
         // Validate input
         if (!Array.isArray(tasks)) {
-            throw new Error('Tasks must be an array');
+            throw new Error('Tasks must be an array, got ' + typeof tasks);
         }
 
         if (tasks.length === 0) {
             return tasks;
+        }
+
+        // Validate sortBy and order parameters
+        if (typeof sortBy !== 'string') {
+            console.warn('[CRUD] Invalid sortBy parameter, defaulting to "date"');
+            sortBy = 'date';
+        }
+
+        if (typeof order !== 'string' || !['asc', 'desc'].includes(order)) {
+            console.warn('[CRUD] Invalid order parameter, defaulting to "desc"');
+            order = 'desc';
         }
 
         // Create a copy to avoid mutating original
@@ -754,12 +920,22 @@ function sortTasks(tasks, sortBy = 'date', order = 'desc') {
         sortedTasks.sort((a, b) => {
             let comparison = 0;
 
+            // Validate task objects
+            if (!a || typeof a !== 'object' || !b || typeof b !== 'object') {
+                return 0;
+            }
+
             switch (sortBy) {
                 case 'date':
                     // Sort by creation date
-                    const dateA = new Date(a.createdAt || 0);
-                    const dateB = new Date(b.createdAt || 0);
-                    comparison = dateA - dateB;
+                    try {
+                        const dateA = new Date(a.createdAt || 0);
+                        const dateB = new Date(b.createdAt || 0);
+                        comparison = dateA - dateB;
+                    } catch (dateError) {
+                        console.warn('[CRUD] Date comparison error:', dateError);
+                        comparison = 0;
+                    }
                     break;
 
                 case 'dueDate':
@@ -771,9 +947,14 @@ function sortTasks(tasks, sortBy = 'date', order = 'desc') {
                     } else if (!b.dueDate) {
                         comparison = -1;
                     } else {
-                        const dueDateA = new Date(a.dueDate);
-                        const dueDateB = new Date(b.dueDate);
-                        comparison = dueDateA - dueDateB;
+                        try {
+                            const dueDateA = new Date(a.dueDate);
+                            const dueDateB = new Date(b.dueDate);
+                            comparison = dueDateA - dueDateB;
+                        } catch (dateError) {
+                            console.warn('[CRUD] Due date comparison error:', dateError);
+                            comparison = 0;
+                        }
                     }
                     break;
 
@@ -805,9 +986,13 @@ function sortTasks(tasks, sortBy = 'date', order = 'desc') {
 
                 default:
                     console.warn(`[CRUD] Unknown sort field: ${sortBy}, defaulting to date`);
-                    const defaultDateA = new Date(a.createdAt || 0);
-                    const defaultDateB = new Date(b.createdAt || 0);
-                    comparison = defaultDateA - defaultDateB;
+                    try {
+                        const defaultDateA = new Date(a.createdAt || 0);
+                        const defaultDateB = new Date(b.createdAt || 0);
+                        comparison = defaultDateA - defaultDateB;
+                    } catch (dateError) {
+                        comparison = 0;
+                    }
             }
 
             // Apply sort order
@@ -818,7 +1003,7 @@ function sortTasks(tasks, sortBy = 'date', order = 'desc') {
         return sortedTasks;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'sortTasks',
             userMessage: 'Unable to sort tasks. Showing in default order.',
             severity: 'low',
@@ -848,13 +1033,13 @@ function getTasksDueToday() {
         const todayString = today.toISOString().split('T')[0];
 
         const tasksDueToday = tasks.filter(task => {
-            if (!task.dueDate) return false;
+            if (!task || !task.dueDate) return false;
             
             try {
                 const taskDueDate = task.dueDate.split('T')[0];
                 return taskDueDate === todayString && !task.completed;
             } catch (dateError) {
-                console.warn('[CRUD] Invalid due date format for task:', task.id);
+                console.warn('[CRUD] Invalid due date format for task:', task.id, dateError);
                 return false;
             }
         });
@@ -863,11 +1048,14 @@ function getTasksDueToday() {
         return tasksDueToday;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'getTasksDueToday',
             userMessage: 'Unable to retrieve tasks due today.',
             severity: 'low',
-            silent: true
+            silent: true,
+            metadata: {
+                storageAvailable: isLocalStorageAvailable()
+            }
         });
         
         return [];
@@ -885,14 +1073,18 @@ function getOverdueTasks() {
         now.setHours(0, 0, 0, 0);
 
         const overdueTasks = tasks.filter(task => {
-            if (!task.dueDate || task.completed) return false;
+            if (!task || !task.dueDate || task.completed) return false;
             
             try {
                 const dueDate = new Date(task.dueDate);
+                if (isNaN(dueDate.getTime())) {
+                    console.warn('[CRUD] Invalid due date for task:', task.id);
+                    return false;
+                }
                 dueDate.setHours(0, 0, 0, 0);
                 return dueDate < now;
             } catch (dateError) {
-                console.warn('[CRUD] Invalid due date format for task:', task.id);
+                console.warn('[CRUD] Date parsing error for task:', task.id, dateError);
                 return false;
             }
         });
@@ -901,11 +1093,14 @@ function getOverdueTasks() {
         return overdueTasks;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'getOverdueTasks',
             userMessage: 'Unable to retrieve overdue tasks.',
             severity: 'low',
-            silent: true
+            silent: true,
+            metadata: {
+                storageAvailable: isLocalStorageAvailable()
+            }
         });
         
         return [];
@@ -938,11 +1133,14 @@ function exportTasksToJSON() {
         return jsonString;
 
     } catch (error) {
-        GlobalErrorHandler.handle(error, {
+        safeHandleError(error, {
             context: 'exportTasksToJSON',
             userMessage: 'Unable to export tasks. Please try again.',
             severity: 'medium',
-            silent: false
+            silent: false,
+            metadata: {
+                storageAvailable: isLocalStorageAvailable()
+            }
         });
         
         return null;
@@ -969,6 +1167,15 @@ function importTasksFromJSON(jsonString, merge = false) {
             throw new Error('Invalid import data: must be a JSON string');
         }
 
+        if (jsonString.trim().length === 0) {
+            throw new Error('Import data is empty');
+        }
+
+        // Check localStorage availability
+        if (!isLocalStorageAvailable()) {
+            throw new Error('localStorage is not available');
+        }
+
         // Parse JSON
         let importData;
         try {
@@ -981,23 +1188,31 @@ function importTasksFromJSON(jsonString, merge = false) {
         let importedTasks = [];
         if (Array.isArray(importData)) {
             importedTasks = importData;
-        } else if (importData.tasks && Array.isArray(importData.tasks)) {
+        } else if (importData && typeof importData === 'object' && Array.isArray(importData.tasks)) {
             importedTasks = importData.tasks;
         } else {
-            throw new Error('Invalid import format: expected array of tasks');
+            throw new Error('Invalid import format: expected array of tasks or object with tasks property');
         }
 
         if (importedTasks.length === 0) {
             console.warn('[CRUD] No tasks found in import data');
+            result.success = true; // Not an error, just empty
             return result;
         }
 
         // Validate and process imported tasks
         const validatedTasks = [];
+        const timestamp = Date.now();
+        
         for (let i = 0; i < importedTasks.length; i++) {
             const task = importedTasks[i];
             
             try {
+                // Validate task is an object
+                if (!task || typeof task !== 'object') {
+                    throw new Error(`Task ${i}: not a valid object`);
+                }
+
                 // Validate required fields
                 if (!task.text || typeof task.text !== 'string') {
                     throw new Error(`Task ${i}: missing or invalid text field`);
@@ -1007,10 +1222,20 @@ function importTasksFromJSON(jsonString, merge = false) {
                     throw new Error(`Task ${i}: missing or invalid category field`);
                 }
 
+                // Validate text length
+                const trimmedText = task.text.trim();
+                if (trimmedText.length === 0) {
+                    throw new Error(`Task ${i}: text cannot be empty`);
+                }
+
+                if (trimmedText.length > 500) {
+                    throw new Error(`Task ${i}: text too long (maximum 500 characters)`);
+                }
+
                 // Create validated task with new ID to avoid conflicts
                 const validatedTask = {
-                    id: Date.now().toString() + '_' + i,
-                    text: task.text.trim(),
+                    id: timestamp.toString() + '_' + i + '_' + Math.random().toString(36).substr(2, 9),
+                    text: trimmedText,
                     category: task.category,
                     priority: task.priority || 'medium',
                     completed: Boolean(task.completed),
@@ -1030,7 +1255,7 @@ function importTasksFromJSON(jsonString, merge = false) {
         }
 
         if (validatedTasks.length === 0) {
-            throw new Error('No valid tasks found in import data');
+            throw new Error('No valid tasks found in import data after validation');
         }
 
         // Load existing tasks and merge or replace
@@ -1047,7 +1272,7 @@ function importTasksFromJSON(jsonString, merge = false) {
         // Save tasks
         const saveSuccess = saveTasks(finalTasks);
         if (!saveSuccess) {
-            throw new Error('Failed to save imported tasks');
+            throw new Error('Failed to save imported tasks to storage');
         }
 
         result.success = true;
@@ -1056,18 +1281,35 @@ function importTasksFromJSON(jsonString, merge = false) {
     } catch (error) {
         result.errors.push(error.message);
         
-        GlobalErrorHandler.handle(error, {
+        let userMessage = 'Unable to import tasks. ';
+        if (error.message.includes('JSON')) {
+            userMessage += 'The file format is invalid.';
+        } else if (error.message.includes('storage')) {
+            userMessage += 'Storage is unavailable.';
+        } else if (error.message.includes('No valid tasks')) {
+            userMessage += 'No valid tasks found in the import file.';
+        } else {
+            userMessage += 'Please check the file and try again.';
+        }
+
+        safeHandleError(error, {
             context: 'importTasksFromJSON',
-            userMessage: 'Unable to import tasks. Please check the file format and try again.',
+            userMessage: userMessage,
             severity: 'high',
             silent: false,
             metadata: {
                 imported: result.imported,
                 skipped: result.skipped,
-                merge: merge
+                merge: merge,
+                storageAvailable: isLocalStorageAvailable(),
+                dataLength: jsonString ? jsonString.length : 0
             }
         });
     }
 
     return result;
 }
+
+// ===================================================================
+// END OF FILE: js/crud.js
+// ===================================================================
